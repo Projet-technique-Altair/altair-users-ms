@@ -1,17 +1,34 @@
-use axum::{Router, routing::get, extract::Path, Json};
-use crate::models::user::User;
-use uuid::Uuid;
+use axum::{
+    extract::{Path, State},
+    routing::get,
+    Json, Router,
+};
+use serde_json::json;
 
-pub fn users_routes() -> Router {
+use crate::state::AppState;
+
+pub fn routes() -> Router<AppState> {
     Router::new()
-        // GET /users/:id
-        .route("/:id", get(get_user_by_id))
+        .route("/me", get(me))
+        .route("/:id", get(get_user))
 }
 
-pub async fn get_user_by_id(Path(id): Path<Uuid>) -> Json<User> {
-    Json(User {
-        user_id: id,
-        name: "Mock User".into(),
-        role: "teacher".into(),
-    })
+async fn me(State(state): State<AppState>) -> Json<serde_json::Value> {
+    Json(json!({
+        "status": "ok",
+        "me": {
+            "id": 1,
+            "name": "Test User"
+        }
+    }))
+}
+
+async fn get_user(State(state): State<AppState>, Path(id): Path<i32>) -> Json<serde_json::Value> {
+    Json(json!({
+        "status": "ok",
+        "user": {
+            "id": id,
+            "name": format!("User {}", id)
+        }
+    }))
 }

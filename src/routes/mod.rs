@@ -1,9 +1,10 @@
-pub mod me;
-pub mod users;
-pub mod health;
-pub mod metrics;
+use axum::Router;
+use crate::state::AppState;
 
-pub use me::me_routes;
-pub use users::users_routes;
-pub use health::health_routes;
-pub use metrics::metrics_routes;
+pub mod users;
+
+pub fn init_routes() -> Router<AppState> {
+    Router::new()
+        .nest("/users", users::routes())
+        .route("/health", axum::routing::get(|| async { "ok" }))
+}

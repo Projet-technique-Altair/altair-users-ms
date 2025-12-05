@@ -1,22 +1,26 @@
-use axum::Router;
+use axum::{Router};
 use tokio::net::TcpListener;
 
+mod state;
 mod routes;
-mod models;
+mod error;
+mod services;
 
-use routes::{me_routes, users_routes, health_routes, metrics_routes};
+use state::AppState;
 
 #[tokio::main]
 async fn main() {
-    let app = Router::new()
-        .nest("/me", me_routes())
-        .nest("/users", users_routes())
-        .nest("/health", health_routes())
-        .nest("/metrics/basic", metrics_routes());
+    dotenvy::dotenv().ok();
 
-    let addr = "0.0.0.0:3001";
-    println!("Users-MS running on {}", addr);
+    let state = AppState::init();
 
-    let listener = TcpListener::bind(addr).await.unwrap();
+    let app = routes::init_routes().with_state(state);
+
+    let listener = TcpListener::bind("0.0.0.0:3001")
+        .await
+        .expect("❌ Failed to bind port 3001");
+
+    println!("Users-MS running on http://localhost:3001");
+
     axum::serve(listener, app).await.unwrap();
 }
