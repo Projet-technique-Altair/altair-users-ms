@@ -2,11 +2,13 @@ use axum::{Router};
 use tokio::net::TcpListener;
 
 mod state;
-mod routes;
 mod error;
+mod models;
 mod services;
+mod routes;
 
 use state::AppState;
+use routes::init_routes;
 
 #[tokio::main]
 async fn main() {
@@ -14,11 +16,11 @@ async fn main() {
 
     let state = AppState::init();
 
-    let app = routes::init_routes().with_state(state);
+    let app = init_routes().with_state(state);
 
     let listener = TcpListener::bind("0.0.0.0:3001")
         .await
-        .expect("❌ Failed to bind port 3001");
+        .expect("Failed to bind port 3001");
 
     println!("Users-MS running on http://localhost:3001");
 

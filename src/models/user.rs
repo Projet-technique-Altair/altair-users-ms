@@ -1,9 +1,12 @@
-use serde::{Deserialize, Serialize};
+use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct User {
     pub user_id: Uuid,
     pub name: String,
-    pub role: String,
+    pub pseudo: String,
+    pub mail: String,
+    pub post: String,       // enum user_post
+    pub status: String,     // enum user_status
 }
