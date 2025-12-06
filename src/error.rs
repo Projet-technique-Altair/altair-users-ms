@@ -1,16 +1,26 @@
-use axum::{response::{IntoResponse, Response}, Json};
-use serde_json::json;
+use axum::{http::StatusCode, response::IntoResponse, Json};
+use serde_json::{json, Value};
 
-pub struct ApiError {
-    pub message: String,
+#[derive(thiserror::Error, Debug)]
+pub enum AppError {
+    #[error("User not found")]
+    NotFound,
+
+    #[error("Internal error")]
+    Internal,
 }
 
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
+impl IntoResponse for AppError {
+    fn into_response(self) -> axum::response::Response {
+        let status = match self {
+            AppError::NotFound => StatusCode::NOT_FOUND,
+            AppError::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+
         let body = Json(json!({
-            "error": self.message
+            "error": self.to_string()
         }));
 
-        (axum::http::StatusCode::BAD_REQUEST, body).into_response()
+        (status, body).into_response()
     }
 }

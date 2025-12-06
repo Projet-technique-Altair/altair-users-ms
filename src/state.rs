@@ -2,13 +2,13 @@ use crate::services::users_service::UsersService;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub users: UsersService,
+    pub users_service: UsersService,
 }
 
 impl AppState {
-    pub fn init() -> Self {
+    pub fn new() -> Self {
         Self {
-            users: UsersService::new(),
+            users_service: UsersService::new(),
         }
     }
 }

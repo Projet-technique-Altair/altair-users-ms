@@ -1,20 +1,13 @@
-use axum::{Router, routing::get, Json};
-use uuid::Uuid;
-
-use crate::models::user::User;
+use axum::{Json, extract::State};
+use serde_json::Value;
 use crate::state::AppState;
 
-pub fn routes() -> Router<AppState> {
-    Router::new().route("/", get(get_me))
+pub fn routes() -> axum::Router<AppState> {
+    axum::Router::new().route("/", axum::routing::get(get_me))
 }
 
-async fn get_me() -> Json<User> {
-    Json(User {
-        user_id: Uuid::new_v4(),
-        name: "Current User".into(),
-        pseudo: "current".into(),
-        mail: "current@example.com".into(),
-        post: "student".into(),
-        status: "active".into(),
-    })
+async fn get_me(
+    State(state): State<AppState>
+) -> Json<Value> {
+    Json(state.users_service.get_mock_user())
 }

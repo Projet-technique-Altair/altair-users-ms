@@ -1,11 +1,8 @@
-use axum::{Router, routing::get, Json};
+use axum::Json;
+use serde_json::{json, Value};
 
-use crate::state::AppState;
-
-pub fn routes() -> Router<AppState> {
-    Router::new().route("/", get(health))
-}
-
-async fn health() -> Json<&'static str> {
-    Json("ok")
+pub async fn health() -> Json<Value> {
+    Json(json!({
+        "status": "ok",
+    }))
 }

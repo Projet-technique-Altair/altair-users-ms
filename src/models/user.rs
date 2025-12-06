@@ -7,6 +7,6 @@ pub struct User {
     pub name: String,
     pub pseudo: String,
     pub mail: String,
-    pub post: String,       // enum user_post
-    pub status: String,     // enum user_status
+    pub post: String,   // student | teacher | admin
+    pub status: String, // active | banned | blackhole
 }
