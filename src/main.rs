@@ -1,4 +1,3 @@
-use axum::Router;
 use tower_http::cors::{Any, CorsLayer};
 
 mod routes;
@@ -12,7 +11,9 @@ use crate::state::AppState;
 
 #[tokio::main]
 async fn main() {
-    let state = AppState::new();
+    dotenvy::dotenv().ok();
+
+    let state = AppState::new().await;
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -25,7 +26,7 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3001")
         .await
-        .unwrap();
+        .expect("Failed to bind port 3001");
 
     println!("Users MS running on http://localhost:3001");
 

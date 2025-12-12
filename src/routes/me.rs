@@ -1,13 +1,23 @@
-use axum::{Json, extract::State};
-use serde_json::Value;
+use axum::{
+    extract::State,
+    routing::get,
+    Json, Router,
+};
 use crate::state::AppState;
+use crate::models::user::User;
 
-pub fn routes() -> axum::Router<AppState> {
-    axum::Router::new().route("/", axum::routing::get(get_me))
+pub fn routes() -> Router<AppState> {
+    Router::new().route("/", get(me))
 }
 
-async fn get_me(
-    State(state): State<AppState>
-) -> Json<Value> {
-    Json(state.users_service.get_mock_user())
+async fn me(
+    State(state): State<AppState>,
+) -> Result<Json<User>, axum::http::StatusCode> {
+    let user = state
+        .users_service
+        .get_first_user()
+        .await
+        .map_err(|_| axum::http::StatusCode::NOT_FOUND)?;
+
+    Ok(Json(user))
 }
