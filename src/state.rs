@@ -19,4 +19,20 @@ impl AppState {
 
         Self { users_service }
     }
+
+    /// State minimal pour les tests CI
+    /// - DB réelle
+    /// - connexion lazy (aucune requête exécutée)
+    pub fn test() -> Self {
+        let database_url =
+            std::env::var("DATABASE_URL")
+                .unwrap_or_else(|_| "postgres://localhost/dummy".to_string());
+
+        let db = PgPool::connect_lazy(&database_url)
+            .expect("Invalid DATABASE_URL");
+
+        let users_service = UsersService::new(db);
+
+        Self { users_service }
+    }
 }

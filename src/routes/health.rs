@@ -7,6 +7,21 @@ pub async fn health(
 ) -> Json<serde_json::Value> {
     Json(json!({
         "status": "ok",
-        //"service": "labs-ms"
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::State;
+
+    #[tokio::test]
+    async fn health_is_ok() {
+        // AppState minimal, lazy DB (aucune connexion réelle)
+        let state = AppState::test();
+
+        let response = health(State(state)).await;
+
+        assert_eq!(response.0["status"], "ok");
+    }
 }
