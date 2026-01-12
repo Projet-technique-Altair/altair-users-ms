@@ -8,7 +8,6 @@ use crate::models::api::{ApiError, ApiErrorResponse, ApiMeta};
 
 #[derive(thiserror::Error, Debug)]
 pub enum AppError {
-
     #[error("Internal error: {0}")]
     Internal(String),
 
