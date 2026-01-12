@@ -2,8 +2,8 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
-    models::user::{User, UserRow},
     error::AppError,
+    models::user::{User, UserRow},
 };
 
 #[derive(Clone)]
@@ -16,10 +16,7 @@ impl UsersService {
         Self { db }
     }
 
-    pub async fn get_user_by_id(
-        &self,
-        user_id: Uuid,
-    ) -> Result<User, AppError> {
+    pub async fn get_user_by_id(&self, user_id: Uuid) -> Result<User, AppError> {
         let row = sqlx::query_as::<_, UserRow>(
             r#"
             SELECT
@@ -31,7 +28,7 @@ impl UsersService {
                 status::text AS status
             FROM users
             WHERE user_id = $1
-            "#
+            "#,
         )
         .bind(user_id)
         .fetch_one(&self.db)
@@ -41,6 +38,4 @@ impl UsersService {
         let user = User::try_from(row)?;
         Ok(user)
     }
-
-    
 }

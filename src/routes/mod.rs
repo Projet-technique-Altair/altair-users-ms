@@ -1,8 +1,7 @@
-use axum::{routing::get, Router};
 use crate::state::AppState;
+use axum::{routing::get, Router};
 
 use crate::routes::health::health;
-
 
 pub mod health;
 pub mod me;

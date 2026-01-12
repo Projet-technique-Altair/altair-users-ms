@@ -11,7 +11,6 @@ use crate::{
     state::AppState,
 };
 
-
 pub fn routes() -> Router<AppState> {
     Router::new().route("/:id", get(get_user))
 }

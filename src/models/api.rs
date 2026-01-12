@@ -27,7 +27,6 @@ pub struct ApiResponse<T> {
     pub meta: ApiMeta,
 }
 
-
 impl ApiMeta {
     pub fn new() -> Self {
         Self {

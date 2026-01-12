@@ -1,5 +1,5 @@
-use sqlx::PgPool;
 use crate::services::users_service::UsersService;
+use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -8,8 +8,7 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new() -> Self {
-        let database_url =
-            std::env::var("DATABASE_URL").expect("DATABASE_URL not set");
+        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL not set");
 
         let db = PgPool::connect(&database_url)
             .await
@@ -24,12 +23,10 @@ impl AppState {
     /// - DB réelle
     /// - connexion lazy (aucune requête exécutée)
     pub fn test() -> Self {
-        let database_url =
-            std::env::var("DATABASE_URL")
-                .unwrap_or_else(|_| "postgres://localhost/dummy".to_string());
+        let database_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://localhost/dummy".to_string());
 
-        let db = PgPool::connect_lazy(&database_url)
-            .expect("Invalid DATABASE_URL");
+        let db = PgPool::connect_lazy(&database_url).expect("Invalid DATABASE_URL");
 
         let users_service = UsersService::new(db);
 

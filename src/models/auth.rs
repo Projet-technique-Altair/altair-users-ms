@@ -1,6 +1,6 @@
-use uuid::Uuid;
-use serde::Deserialize;
 use crate::error::AppError;
+use serde::Deserialize;
+use uuid::Uuid;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct JwtClaims {
@@ -8,13 +8,7 @@ pub struct JwtClaims {
     pub role: String, // learner | creator | admin
 }
 
-
-use axum::{
-    async_trait,
-    extract::FromRequestParts,
-    http::request::Parts,
-};
-
+use axum::{async_trait, extract::FromRequestParts, http::request::Parts};
 
 pub struct AuthUser(pub JwtClaims);
 
@@ -25,10 +19,7 @@ where
 {
     type Rejection = AppError;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        _state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         parts
             .extensions
             .get::<JwtClaims>()
