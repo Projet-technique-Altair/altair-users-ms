@@ -6,6 +6,7 @@ mod models;
 mod routes;
 mod services;
 mod state;
+mod extractors;
 
 use crate::routes::init_routes;
 use crate::state::AppState;
@@ -39,6 +40,7 @@ async fn main() {
         .expect("Failed to bind port 3001");
 
     tracing::info!("🌐 Users MS running on 0.0.0.0:3001");
+    println!("Users MS running on http://localhost:3001");
 
     axum::serve(listener, app).await.unwrap();
 

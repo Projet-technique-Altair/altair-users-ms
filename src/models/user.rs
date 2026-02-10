@@ -2,30 +2,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::error::AppError;
-
-//
-// =======================
-// API ENUMS (exposés)
-// =======================
-//
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum UserPost {
-    Student,
-    Creator,
-    Admin,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum UserStatus {
-    Active,
-    Blackhole,
-    Banned,
-}
-
 //
 // =======================
 // DB MODEL (SQLx)
@@ -35,11 +11,16 @@ pub enum UserStatus {
 #[derive(Debug, Clone, FromRow)]
 pub struct UserRow {
     pub user_id: Uuid,
+    pub keycloak_id: String,
+    pub role: String,
+
     pub name: String,
     pub pseudo: String,
-    pub mail: String,
-    pub post: String,   // snake_case en DB
-    pub status: String, // snake_case en DB
+    pub email: String,
+
+    pub avatar: Option<String>,
+    pub last_login: Option<chrono::NaiveDateTime>,
+    pub created_at: chrono::NaiveDateTime,
 }
 
 //
@@ -48,14 +29,18 @@ pub struct UserRow {
 // =======================
 //
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
     pub user_id: Uuid,
+    pub role: String,
+
     pub name: String,
     pub pseudo: String,
-    pub mail: String,
-    pub post: UserPost,
-    pub status: UserStatus,
+    pub email: String,
+
+    pub avatar: Option<String>,
+    pub last_login: Option<chrono::NaiveDateTime>,
+    pub created_at: chrono::NaiveDateTime,
 }
 
 //
@@ -64,39 +49,19 @@ pub struct User {
 // =======================
 //
 
-impl TryFrom<UserRow> for User {
-    type Error = AppError;
-
-    fn try_from(row: UserRow) -> Result<Self, Self::Error> {
-        let post = match row.post.as_str() {
-            "student" => UserPost::Student,
-            "creator" => UserPost::Creator,
-            "admin" => UserPost::Admin,
-            other => {
-                return Err(AppError::Internal(format!(
-                    "Invalid user post in DB: {other}"
-                )))
-            }
-        };
-
-        let status = match row.status.as_str() {
-            "active" => UserStatus::Active,
-            "blackhole" => UserStatus::Blackhole,
-            "banned" => UserStatus::Banned,
-            other => {
-                return Err(AppError::Internal(format!(
-                    "Invalid user status in DB: {other}"
-                )))
-            }
-        };
-
-        Ok(User {
+impl From<UserRow> for User {
+    fn from(row: UserRow) -> Self {
+        Self {
             user_id: row.user_id,
+            role: row.role,
+
             name: row.name,
             pseudo: row.pseudo,
-            mail: row.mail,
-            post,
-            status,
-        })
+            email: row.email,
+
+            avatar: row.avatar,
+            last_login: row.last_login,
+            created_at: row.created_at,
+        }
     }
 }
