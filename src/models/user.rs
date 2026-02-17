@@ -9,6 +9,7 @@ use uuid::Uuid;
 //
 
 #[derive(Debug, Clone, FromRow)]
+#[allow(dead_code)]
 pub struct UserRow {
     pub user_id: Uuid,
     pub keycloak_id: String,
