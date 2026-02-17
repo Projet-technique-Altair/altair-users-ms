@@ -7,6 +7,7 @@ use axum::{
 use crate::models::api::{ApiError, ApiErrorResponse, ApiMeta};
 
 #[derive(thiserror::Error, Debug)]
+#[allow(dead_code)]
 pub enum AppError {
     #[error("Resource not found: {0}")]
     NotFound(String),
