@@ -342,14 +342,10 @@ The service is containerized and deployed to **Google Cloud Run** with the follo
 ## Known Issues & Limitations
 
 ### 🔴 Compilation Blockers
-
-- [ ]  [`health.rs`](http://health.rs) references `AppState::test()` which doesn't exist
-- [ ]  `routes/[users.rs](http://users.rs)` has syntax error (missing closing parenthesis)
 - [ ]  Unused imports trigger failures with `clippy -D warnings`
 
 ### 🟡 Security Concerns
 
-- [ ]  Dockerfile attempts to `COPY .env` which is dangerous for production
 - [ ]  Ultra-permissive CORS (allows `Any` origin) should be restricted
 
 ### 🟡 Operational Gaps
@@ -384,16 +380,20 @@ GitHub Actions workflow (`.github/workflows/ci.yml`):
 
 ** Current Status: Pre-Alpha / Development**
 
-This microservice is under active development and has several **compilation blockers** and **operational gaps** that must be resolved before production use.
+This microservice is under active development and has several **operational gaps** that must be resolved before production use.
+
+**Recent updates (implemented):**
+
+- [x] Removed `COPY .env` from `Dockerfile` (avoid embedding secrets in image)
+- [x] Simplified `GET /users/:id` and kept header convention via `extract_caller`
+- [x] Replaced hardcoded `0.0.0.0:3001` bind with `PORT` env (fallback to `3001`)
 
 **Immediate priorities:**
 
-1. Fix compilation errors in [`health.rs`](http://health.rs) and [`users.rs`](http://users.rs)
-2. Add database migration scripts
-3. Implement `last_login` tracking
-4. Restrict CORS policy for production
-5. Remove `.env` copy from Dockerfile
-6. Add comprehensive integration tests
+1. Add database migration scripts
+2. Implement `last_login` tracking
+3. Restrict CORS policy for production
+4. Add comprehensive integration tests
 
 **Maintainers:** This is an internal Altaïr platform service. For questions or contributions, contact the platform team.
 

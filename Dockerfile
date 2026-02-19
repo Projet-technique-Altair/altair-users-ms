@@ -23,9 +23,6 @@ RUN apt-get update \
 
 COPY --from=builder /app/target/release/altair-users-ms /app/altair-users-ms
 
-# on embarque le .env
-COPY .env /app/.env
-
 EXPOSE 3001
 
 ENV RUST_LOG=info

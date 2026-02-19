@@ -35,12 +35,14 @@ async fn main() {
 
     let app = init_routes().with_state(state).layer(cors);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001")
-        .await
-        .expect("Failed to bind port 3001");
+    let port = std::env::var("PORT").unwrap_or("3001".to_string());
 
-    tracing::info!("🌐 Users MS running on 0.0.0.0:3001");
-    println!("Users MS running on http://localhost:3001");
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
+        .await
+        .unwrap_or_else(|_| panic!("Failed to bind port {}", port));
+
+    tracing::info!("🌐 Users MS running on 0.0.0.0:{}", port);
+    println!("Users MS running on http://localhost:{}", port);
 
     axum::serve(listener, app).await.unwrap();
 
