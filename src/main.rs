@@ -2,11 +2,11 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::EnvFilter;
 
 mod error;
+mod extractors;
 mod models;
 mod routes;
 mod services;
 mod state;
-mod extractors;
 
 use crate::routes::init_routes;
 use crate::state::AppState;

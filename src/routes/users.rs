@@ -7,10 +7,7 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    error::AppError,
-    models::api::ApiResponse,
-    services::extractor::extract_caller,
-    state::AppState,
+    error::AppError, models::api::ApiResponse, services::extractor::extract_caller, state::AppState,
 };
 
 pub fn routes() -> Router<AppState> {

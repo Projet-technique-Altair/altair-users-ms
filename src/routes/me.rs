@@ -1,14 +1,10 @@
 use axum::{extract::State, routing::get, Json, Router};
 
 use crate::{
-    error::AppError,
-    models::api::ApiResponse,
-    state::AppState,
-    extractors::auth_user::AuthUser,
+    error::AppError, extractors::auth_user::AuthUser, models::api::ApiResponse, state::AppState,
 };
 
 use crate::models::User;
-
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/", get(me))
@@ -23,7 +19,6 @@ async fn me(
         roles,
     }: AuthUser,
 ) -> Result<Json<ApiResponse<User>>, AppError> {
-
     // 🎯 Choix du rôle MVP (1 seul rôle stocké en DB)
     let role = if roles.iter().any(|r| r == "admin") {
         "admin"
@@ -35,12 +30,7 @@ async fn me(
 
     let user = state
         .users_service
-        .get_or_create_user_from_keycloak(
-            &keycloak_id,
-            role,
-            &name,
-            &email,
-        )
+        .get_or_create_user_from_keycloak(&keycloak_id, role, &name, &email)
         .await?;
 
     Ok(Json(ApiResponse::success(user)))

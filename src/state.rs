@@ -30,8 +30,8 @@ impl AppState {
             "postgresql://user:password@localhost:5432/altair_users".to_string()
         });
 
-        let db = PgPool::connect_lazy(&database_url)
-            .expect("Failed to create lazy PgPool for tests");
+        let db =
+            PgPool::connect_lazy(&database_url).expect("Failed to create lazy PgPool for tests");
 
         let users_service = UsersService::new(db);
 

@@ -1,2 +1,2 @@
-pub mod users_service;
 pub mod extractor;
+pub mod users_service;
