@@ -72,6 +72,9 @@ Frontend → API Gateway (validates Keycloak JWT) → User Microservice → Post
 
 - **DATABASE_URL** environment variable (PostgreSQL connection string)
 - **PORT** environment variable (default: `3001`)
+- **ALLOWED_ORIGINS** CORS allowlist (CSV)
+- **ALLOWED_METHODS** CORS methods allowlist (CSV)
+- **ALLOWED_HEADERS** CORS headers allowlist (CSV)
 - Private network access (no public internet exposure)
 
 ### Environment Variables
@@ -79,8 +82,18 @@ Frontend → API Gateway (validates Keycloak JWT) → User Microservice → Post
 ```bash
 DATABASE_URL=postgresql://user:password@postgres:5432/altair_users
 PORT=3001  # Optional, defaults to 3001
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+ALLOWED_METHODS=GET,OPTIONS
+ALLOWED_HEADERS=authorization,content-type,x-altair-keycloak-id,x-altair-name,x-altair-email,x-altair-roles,x-altair-user-id
 RUST_LOG=info  # Optional, for logging level
 ```
+
+**CORS env format rules:**
+
+- CSV values
+- No spaces between values
+- Header names in lowercase
+- HTTP methods in uppercase
 
 ---
 
@@ -346,7 +359,7 @@ The service is containerized and deployed to **Google Cloud Run** with the follo
 
 ### 🟡 Security Concerns
 
-- [ ]  Ultra-permissive CORS (allows `Any` origin) should be restricted
+- [ ]  Keep CORS allowlists (`ALLOWED_*`) synchronized across envs (dev/staging/prod)
 
 ### 🟡 Operational Gaps
 
@@ -387,13 +400,14 @@ This microservice is under active development and has several **operational gaps
 - [x] Removed `COPY .env` from `Dockerfile` (avoid embedding secrets in image)
 - [x] Simplified `GET /users/:id` and kept header convention via `extract_caller`
 - [x] Replaced hardcoded `0.0.0.0:3001` bind with `PORT` env (fallback to `3001`)
+- [x] Replaced permissive CORS (`Any`) with strict allowlists
+- [x] Externalized CORS config to `.env` with safe code defaults
 
 **Immediate priorities:**
 
 1. Add database migration scripts
 2. Implement `last_login` tracking
-3. Restrict CORS policy for production
-4. Add comprehensive integration tests
+3. Add comprehensive integration tests
 
 **Maintainers:** This is an internal Altaïr platform service. For questions or contributions, contact the platform team.
 
