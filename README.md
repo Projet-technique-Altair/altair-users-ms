@@ -293,7 +293,7 @@ Retrieve a user by `user_id` with access control.
 | `pseudo` | TEXT | NOT NULL | Auto-generated as `lowercase(name)` |
 | `email` | TEXT |  | User email address |
 | `avatar` | TEXT | NULLABLE | Avatar URL |
-| `last_login` | TIMESTAMP | NULLABLE | Last login timestamp (not yet implemented) |
+| `last_login` | TIMESTAMP | NULLABLE | Last successful login timestamp (updated via `/me`) |
 | `created_at` | TIMESTAMP | NOT NULL | Account creation timestamp |
 
  **Note:** The repository does not include SQL migrations. The database schema must be provisioned externally.
@@ -369,14 +369,12 @@ The service is containerized and deployed to **Google Cloud Run** with the follo
 ### 🟡 Operational Gaps
 
 - [ ]  No database migration files included
-- [ ]  `last_login` tracking not implemented
 - [ ]  No metrics endpoint exposed in router
 - [ ]  Test suite cannot currently pass
 
 ### 🟡 Business Logic Limitations
 
 - **No profile updates:** Existing users are never updated (no UPDATE queries for role/name/email)
-- **`last_login` not maintained:** Never updated on access
 - **Pseudo collisions:** `pseudo = lowercase(name)` can create duplicates
 - **No unique slug generation**
 
@@ -407,12 +405,12 @@ This microservice is under active development and has several **operational gaps
 - [x] Replaced hardcoded `0.0.0.0:3001` bind with `PORT` env (fallback to `3001`)
 - [x] Replaced permissive CORS (`Any`) with strict allowlists
 - [x] Externalized CORS config to `.env` with safe code defaults
+- [x] Implemented `last_login` tracking on successful `/me` access
 
 **Immediate priorities:**
 
 1. Add database migration scripts
-2. Implement `last_login` tracking
-3. Add comprehensive integration tests
+2. Add comprehensive integration tests
 
 **Maintainers:** This is an internal Altaïr platform service. For questions or contributions, contact the platform team.
 

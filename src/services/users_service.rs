@@ -73,12 +73,24 @@ impl UsersService {
         name: &str,
         email: &str,
     ) -> Result<User, AppError> {
-        // 1️⃣ Try get (fast path)
-        if let Ok(user) = self.get_user_by_keycloak_id(keycloak_id).await {
-            return Ok(user);
+        // 1) Existing user: touch last_login and return fresh row.
+        if self.get_user_by_keycloak_id(keycloak_id).await.is_ok() {
+            sqlx::query(
+                r#"
+                UPDATE users
+                SET last_login = NOW()
+                WHERE keycloak_id = $1
+                "#,
+            )
+            .bind(keycloak_id)
+            .execute(&self.db)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+            return self.get_user_by_keycloak_id(keycloak_id).await;
         }
 
-        // 2️⃣ Try insert (idempotent)
+        // 2) New user: insert and initialize last_login.
         sqlx::query(
             r#"
             INSERT INTO users (
@@ -86,9 +98,10 @@ impl UsersService {
                 role,
                 name,
                 pseudo,
-                email
+                email,
+                last_login
             )
-            VALUES ($1, $2, $3, $4, $5)
+            VALUES ($1, $2, $3, $4, $5, NOW())
             ON CONFLICT (keycloak_id) DO NOTHING
             "#,
         )
@@ -101,7 +114,7 @@ impl UsersService {
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        // 3️⃣ Always fetch (RETURN DIRECTEMENT)
+        // 3) Always fetch final row.
         self.get_user_by_keycloak_id(keycloak_id).await
     }
 }
