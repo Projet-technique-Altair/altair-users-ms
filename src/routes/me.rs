@@ -19,10 +19,20 @@ async fn me(
         roles,
     }: AuthUser,
 ) -> Result<Json<ApiResponse<User>>, AppError> {
-    // 🎯 Choix du rôle MVP (1 seul rôle stocké en DB)
-    let role = if roles.iter().any(|r| r == "admin") {
+    // Priority policy: admin > creator > learner.
+    let has_admin = roles.iter().any(|r| r == "admin");
+    let has_creator = roles.iter().any(|r| r == "creator");
+    let has_learner = roles.iter().any(|r| r == "learner");
+
+    if !has_admin && !has_creator && !has_learner {
+        return Err(AppError::Forbidden(
+            "No recognized role in x-altair-roles".to_string(),
+        ));
+    }
+
+    let role = if has_admin {
         "admin"
-    } else if roles.iter().any(|r| r == "creator") {
+    } else if has_creator {
         "creator"
     } else {
         "learner"

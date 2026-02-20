@@ -164,9 +164,14 @@ Resolve the current user from Keycloak identity, creating the user record if it 
 
 **Role selection logic:**
 
+- Role values are normalized before matching:
+    - trim spaces
+    - lowercase
+    - strip common prefixes (`role_`, `realm:`, `client:<name>:`)
 - Contains `admin` → role = `admin`
-- Contains `creator` → role = `creator`
-- Otherwise → role = `learner`
+- Else contains `creator` → role = `creator`
+- Else contains `learner` → role = `learner`
+- If no recognized role is found, request is rejected with `403 Forbidden`
 
 **Response:**
 
@@ -235,7 +240,7 @@ Retrieve a user by `user_id` with access control.
   "success": false,
   "error": {
     "code": "FORBIDDEN",
-    "message": "Access denied",
+    "message": "No recognized role in x-altair-roles",
     "details": null
   },
   "meta": { /* ... */ }

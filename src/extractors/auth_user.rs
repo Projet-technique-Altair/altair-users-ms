@@ -1,6 +1,7 @@
 use axum::{async_trait, extract::FromRequestParts, http::request::Parts};
 
 use crate::error::AppError;
+use crate::services::extractor::parse_roles_csv;
 
 #[derive(Debug, Clone)]
 pub struct AuthUser {
@@ -43,11 +44,7 @@ where
             .headers
             .get("x-altair-roles")
             .and_then(|v| v.to_str().ok())
-            .map(|s| {
-                s.split(',')
-                    .map(|r| r.trim().to_string())
-                    .collect::<Vec<_>>()
-            })
+            .map(parse_roles_csv)
             .unwrap_or_default();
 
         Ok(AuthUser {
