@@ -1,4 +1,8 @@
-use tower_http::cors::{Any, CorsLayer};
+use axum::http::{
+    header::{AUTHORIZATION, CONTENT_TYPE},
+    HeaderName, HeaderValue, Method,
+};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing_subscriber::EnvFilter;
 
 mod error;
@@ -29,9 +33,20 @@ async fn main() {
     tracing::info!("✅ AppState initialized");
 
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(AllowOrigin::list([
+            HeaderValue::from_static("http://localhost:5173"),
+            HeaderValue::from_static("http://localhost:3000"),
+        ]))
+        .allow_methods([Method::GET, Method::OPTIONS])
+        .allow_headers([
+            AUTHORIZATION,
+            CONTENT_TYPE,
+            HeaderName::from_static("x-altair-keycloak-id"),
+            HeaderName::from_static("x-altair-name"),
+            HeaderName::from_static("x-altair-email"),
+            HeaderName::from_static("x-altair-roles"),
+            HeaderName::from_static("x-altair-user-id"),
+        ]);
 
     let app = init_routes().with_state(state).layer(cors);
 
