@@ -17,7 +17,8 @@ const DEFAULT_ALLOWED_METHODS: &str = "GET,OPTIONS";
 const DEFAULT_ALLOWED_HEADERS: &str = "authorization,content-type,x-altair-keycloak-id,x-altair-name,x-altair-email,x-altair-roles,x-altair-user-id";
 
 fn parse_allowed_origins() -> Vec<HeaderValue> {
-    let raw = std::env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| DEFAULT_ALLOWED_ORIGINS.to_string());
+    let raw =
+        std::env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| DEFAULT_ALLOWED_ORIGINS.to_string());
     let parsed: Vec<HeaderValue> = raw
         .split(',')
         .map(str::trim)
@@ -36,7 +37,8 @@ fn parse_allowed_origins() -> Vec<HeaderValue> {
 }
 
 fn parse_allowed_methods() -> Vec<Method> {
-    let raw = std::env::var("ALLOWED_METHODS").unwrap_or_else(|_| DEFAULT_ALLOWED_METHODS.to_string());
+    let raw =
+        std::env::var("ALLOWED_METHODS").unwrap_or_else(|_| DEFAULT_ALLOWED_METHODS.to_string());
     let parsed: Vec<Method> = raw
         .split(',')
         .map(str::trim)
@@ -55,7 +57,8 @@ fn parse_allowed_methods() -> Vec<Method> {
 }
 
 fn parse_allowed_headers() -> Vec<HeaderName> {
-    let raw = std::env::var("ALLOWED_HEADERS").unwrap_or_else(|_| DEFAULT_ALLOWED_HEADERS.to_string());
+    let raw =
+        std::env::var("ALLOWED_HEADERS").unwrap_or_else(|_| DEFAULT_ALLOWED_HEADERS.to_string());
     let parsed: Vec<HeaderName> = raw
         .split(',')
         .map(str::trim)
