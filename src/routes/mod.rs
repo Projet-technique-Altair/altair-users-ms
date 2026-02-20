@@ -10,6 +10,7 @@ pub mod users;
 pub fn init_routes() -> Router<AppState> {
     Router::new()
         .route("/health", get(health))
-        .nest("/me", me::routes())
+        .route("/me", get(me::me).patch(me::update_me))
+        .route("/me/", get(me::me).patch(me::update_me))
         .nest("/users", users::routes())
 }

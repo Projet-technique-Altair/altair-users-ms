@@ -1,9 +1,10 @@
-use crate::services::users_service::UsersService;
+use crate::services::{keycloak_admin_service::KeycloakAdminService, users_service::UsersService};
 use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct AppState {
     pub users_service: UsersService,
+    pub keycloak_admin_service: Option<KeycloakAdminService>,
 }
 
 impl AppState {
@@ -16,7 +17,13 @@ impl AppState {
 
         let users_service = UsersService::new(db);
 
-        Self { users_service }
+        // Optional: PATCH /me keycloak sync is enabled only when env is present.
+        let keycloak_admin_service = KeycloakAdminService::from_env();
+
+        Self {
+            users_service,
+            keycloak_admin_service,
+        }
     }
 }
 
@@ -35,6 +42,9 @@ impl AppState {
 
         let users_service = UsersService::new(db);
 
-        Self { users_service }
+        Self {
+            users_service,
+            keycloak_admin_service: None,
+        }
     }
 }

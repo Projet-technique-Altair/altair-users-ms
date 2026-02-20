@@ -1,16 +1,16 @@
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{extract::State, Json};
 
 use crate::{
-    error::AppError, extractors::auth_user::AuthUser, models::api::ApiResponse, state::AppState,
+    error::AppError,
+    extractors::auth_user::AuthUser,
+    features::profile_update::{build_update_input, UpdateMePayload},
+    models::api::ApiResponse,
+    state::AppState,
 };
 
 use crate::models::User;
 
-pub fn routes() -> Router<AppState> {
-    Router::new().route("/", get(me))
-}
-
-async fn me(
+pub(crate) async fn me(
     State(state): State<AppState>,
     AuthUser {
         keycloak_id,
@@ -19,7 +19,91 @@ async fn me(
         roles,
     }: AuthUser,
 ) -> Result<Json<ApiResponse<User>>, AppError> {
-    // Priority policy: admin > creator > learner.
+    let role = resolve_effective_role(&roles)?;
+
+    let user = state
+        .users_service
+        .get_or_create_user_from_keycloak(&keycloak_id, role, &name, &email)
+        .await?;
+
+    Ok(Json(ApiResponse::success(user)))
+}
+
+pub(crate) async fn update_me(
+    State(state): State<AppState>,
+    AuthUser {
+        keycloak_id, roles, ..
+    }: AuthUser,
+    Json(payload): Json<UpdateMePayload>,
+) -> Result<Json<ApiResponse<User>>, AppError> {
+    // Normalize and validate requested changes before any side-effect.
+    let caller_role = resolve_effective_role(&roles)?;
+    let update_input = build_update_input(payload)?;
+
+    // Role escalation is restricted to admin callers.
+    if update_input.role.is_some() && caller_role != "admin" {
+        return Err(AppError::Forbidden(
+            "Only admin can update role".to_string(),
+        ));
+    }
+
+    // Reject local pseudo/email collisions early.
+    if let Some(ref pseudo) = update_input.pseudo {
+        let exists = state
+            .users_service
+            .pseudo_exists_for_other_user(&keycloak_id, pseudo)
+            .await?;
+        if exists {
+            return Err(AppError::Conflict(
+                "Pseudo already used by another user".to_string(),
+            ));
+        }
+    }
+
+    if let Some(ref email) = update_input.email {
+        let exists = state
+            .users_service
+            .email_exists_for_other_user(&keycloak_id, email)
+            .await?;
+        if exists {
+            return Err(AppError::Conflict(
+                "Email already used by another user".to_string(),
+            ));
+        }
+    }
+
+    // Keycloak is synchronized first to avoid local-only divergence.
+    let keycloak_service = state.keycloak_admin_service.as_ref().ok_or_else(|| {
+        AppError::Internal(
+            "Keycloak admin sync is not configured. Set KEYCLOAK_URL, KEYCLOAK_REALM, KEYCLOAK_ADMIN_USERNAME and KEYCLOAK_ADMIN_PASSWORD.".to_string(),
+        )
+    })?;
+
+    keycloak_service
+        .sync_profile(
+            &keycloak_id,
+            update_input.pseudo.as_deref(),
+            update_input.email.as_deref(),
+            update_input.role.as_deref(),
+        )
+        .await?;
+
+    // Persist the same changes in users DB once Keycloak sync succeeded.
+    let updated = state
+        .users_service
+        .update_user_profile_by_keycloak_id(
+            &keycloak_id,
+            update_input.pseudo.as_deref(),
+            update_input.email.as_deref(),
+            update_input.role.as_deref(),
+        )
+        .await?;
+
+    Ok(Json(ApiResponse::success(updated)))
+}
+
+fn resolve_effective_role(roles: &[String]) -> Result<&'static str, AppError> {
+    // Priority policy is deterministic: admin > creator > learner.
     let has_admin = roles.iter().any(|r| r == "admin");
     let has_creator = roles.iter().any(|r| r == "creator");
     let has_learner = roles.iter().any(|r| r == "learner");
@@ -30,18 +114,11 @@ async fn me(
         ));
     }
 
-    let role = if has_admin {
-        "admin"
+    if has_admin {
+        Ok("admin")
     } else if has_creator {
-        "creator"
+        Ok("creator")
     } else {
-        "learner"
-    };
-
-    let user = state
-        .users_service
-        .get_or_create_user_from_keycloak(&keycloak_id, role, &name, &email)
-        .await?;
-
-    Ok(Json(ApiResponse::success(user)))
+        Ok("learner")
+    }
 }

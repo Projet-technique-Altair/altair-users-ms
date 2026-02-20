@@ -75,6 +75,8 @@ Frontend → API Gateway (validates Keycloak JWT) → User Microservice → Post
 - **ALLOWED_ORIGINS** CORS allowlist (CSV)
 - **ALLOWED_METHODS** CORS methods allowlist (CSV)
 - **ALLOWED_HEADERS** CORS headers allowlist (CSV)
+- **KEYCLOAK_URL** / **KEYCLOAK_REALM** for admin sync on profile updates
+- **KEYCLOAK_ADMIN_USERNAME** / **KEYCLOAK_ADMIN_PASSWORD** for Keycloak admin token
 - Private network access (no public internet exposure)
 
 ### Environment Variables
@@ -83,8 +85,15 @@ Frontend → API Gateway (validates Keycloak JWT) → User Microservice → Post
 DATABASE_URL=postgresql://user:password@postgres:5432/altair_users
 PORT=3001  # Optional, defaults to 3001
 ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
-ALLOWED_METHODS=GET,OPTIONS
+ALLOWED_METHODS=GET,PATCH,OPTIONS
 ALLOWED_HEADERS=authorization,content-type,x-altair-keycloak-id,x-altair-name,x-altair-email,x-altair-roles,x-altair-user-id
+KEYCLOAK_URL=http://localhost:8080
+KEYCLOAK_REALM=altair
+KEYCLOAK_ADMIN_REALM=master
+KEYCLOAK_ADMIN_CLIENT_ID=admin-cli
+KEYCLOAK_ADMIN_USERNAME=admin
+KEYCLOAK_ADMIN_PASSWORD=admin
+KEYCLOAK_SYNC_USERNAME=false
 RUST_LOG=info  # Optional, for logging level
 ```
 
@@ -249,6 +258,33 @@ Retrieve a user by `user_id` with access control.
 
 ---
 
+#### **PATCH /me** / **PATCH /me/**
+
+Update current user profile fields.
+
+**Body (partial):**
+
+- `pseudo` (optional)
+- `email` (optional)
+- `role` (optional, only admin caller can change it)
+
+**Rules:**
+
+- Input is normalized (`trim`, ignore empty values).
+- Allowed role values: `admin`, `creator`, `learner`.
+- Pseudo/email collisions are rejected with `409 Conflict`.
+- Role update is rejected with `403 Forbidden` unless caller has `admin`.
+- Update order is: Keycloak sync first, then local DB update.
+
+**Keycloak sync behavior:**
+
+- `email`: synchronized to Keycloak.
+- `role`: synchronized to Keycloak realm role when provided by admin caller.
+- `username`: synchronized only if `KEYCLOAK_SYNC_USERNAME=true`.
+  In current infra realm (`editUsernameAllowed=false`), username updates are rejected by Keycloak.
+
+---
+
 ### Standard Response Format
 
 **Success:**
@@ -290,7 +326,7 @@ Retrieve a user by `user_id` with access control.
 | `keycloak_id` | TEXT | UNIQUE, NOT NULL | External Keycloak identity |
 | `role` | TEXT | NOT NULL | User role: `learner`, `creator`, or `admin` |
 | `name` | TEXT | NOT NULL | User display name |
-| `pseudo` | TEXT | NOT NULL | Auto-generated as `lowercase(name)` |
+| `pseudo` | TEXT | NOT NULL | Auto-generated from `lowercase(name)` with collision-safe suffixes (`-2`, `-3`, ...) |
 | `email` | TEXT |  | User email address |
 | `avatar` | TEXT | NULLABLE | Avatar URL |
 | `last_login` | TIMESTAMP | NULLABLE | Last successful login timestamp (updated via `/me`) |
@@ -374,9 +410,18 @@ The service is containerized and deployed to **Google Cloud Run** with the follo
 
 ### 🟡 Business Logic Limitations
 
-- **No profile updates:** Existing users are never updated (no UPDATE queries for role/name/email)
-- **Pseudo collisions:** `pseudo = lowercase(name)` can create duplicates
+- **Profile updates require Keycloak admin env:** `PATCH /me` fails if Keycloak admin sync is not configured.
 - **No unique slug generation**
+
+### Pseudo Generation Strategy
+
+- **Original behavior (historical):**
+  - Pseudo at create time was `lowercase(name)`.
+  - This could create collisions for users with same/similar names.
+- **Current behavior:**
+  - Base pseudo is still derived from `lowercase(name)` (fallback `user` if empty).
+  - If the pseudo is already used, service appends a suffix (`-2`, `-3`, ...).
+  - Example: `tan truong`, `tan truong-2`, `tan truong-3`.
 
 ---
 
@@ -406,6 +451,9 @@ This microservice is under active development and has several **operational gaps
 - [x] Replaced permissive CORS (`Any`) with strict allowlists
 - [x] Externalized CORS config to `.env` with safe code defaults
 - [x] Implemented `last_login` tracking on successful `/me` access
+- [x] Added `PATCH /me` profile updates with DB collision checks
+- [x] Added Keycloak admin synchronization for email and role updates
+- [x] Added collision-safe pseudo generation at create time (`-2`, `-3`, ...)
 
 **Immediate priorities:**
 

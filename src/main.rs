@@ -4,6 +4,7 @@ use tracing_subscriber::EnvFilter;
 
 mod error;
 mod extractors;
+mod features;
 mod models;
 mod routes;
 mod services;
