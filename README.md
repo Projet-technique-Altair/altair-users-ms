@@ -421,7 +421,6 @@ The service is containerized and deployed to **Google Cloud Run** with the follo
 - **Current behavior:**
   - Base pseudo is still derived from `lowercase(name)` (fallback `user` if empty).
   - If the pseudo is already used, service appends a suffix (`-2`, `-3`, ...).
-  - Example: `tan truong`, `tan truong-2`, `tan truong-3`.
 
 ---
 
