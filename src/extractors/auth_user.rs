@@ -7,6 +7,7 @@ use crate::services::extractor::parse_roles_csv;
 pub struct AuthUser {
     pub keycloak_id: String,
     pub name: String,
+    pub pseudo: String,
     pub email: String,
     pub roles: Vec<String>,
 }
@@ -33,6 +34,13 @@ where
             .unwrap_or("unknown")
             .to_string();
 
+        let pseudo = parts
+            .headers
+            .get("x-altair-pseudo")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("unknown")
+            .to_string();
+
         let email = parts
             .headers
             .get("x-altair-email")
@@ -50,6 +58,7 @@ where
         Ok(AuthUser {
             keycloak_id,
             name,
+            pseudo,
             email,
             roles,
         })
