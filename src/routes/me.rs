@@ -15,6 +15,7 @@ pub(crate) async fn me(
     AuthUser {
         keycloak_id,
         name,
+        pseudo,
         email,
         roles,
     }: AuthUser,
@@ -23,7 +24,7 @@ pub(crate) async fn me(
 
     let user = state
         .users_service
-        .get_or_create_user_from_keycloak(&keycloak_id, role, &name, &email)
+        .get_or_create_user_from_keycloak(&keycloak_id, role, &name, &pseudo, &email)
         .await?;
 
     Ok(Json(ApiResponse::success(user)))

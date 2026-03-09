@@ -41,6 +41,43 @@ impl UsersService {
         Ok(row.into())
     }
 
+    // ==========================
+    // GET /users/search?q=
+    // ==========================
+    pub async fn search_users(
+        &self,
+        query: String,
+    ) -> Result<Vec<User>, AppError> {
+
+        let pattern = format!("%{}%", query);
+
+        let rows = sqlx::query_as::<_, UserRow>(
+            r#"
+            SELECT
+                user_id,
+                keycloak_id,
+                role,
+                name,
+                pseudo,
+                email,
+                avatar,
+                last_login,
+                created_at
+            FROM users
+            WHERE pseudo ILIKE $1
+            ORDER BY pseudo
+            LIMIT 10
+            "#,
+        )
+        .bind(pattern)
+        .fetch_all(&self.db)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        Ok(rows.into_iter().map(|r| r.into()).collect())
+    }
+
+
     pub async fn get_user_by_keycloak_id(&self, keycloak_id: &str) -> Result<User, AppError> {
         let row = sqlx::query_as::<_, UserRow>(
             r#"
@@ -71,6 +108,7 @@ impl UsersService {
         keycloak_id: &str,
         role: &str,
         name: &str,
+        pseudo: &str,
         email: &str,
     ) -> Result<User, AppError> {
         // 1) Existing user: touch last_login and return fresh row.
@@ -90,9 +128,7 @@ impl UsersService {
             return self.get_user_by_keycloak_id(keycloak_id).await;
         }
 
-        // 2) New user: allocate a collision-safe pseudo, then insert.
-        let pseudo = self.generate_unique_pseudo(name).await?;
-
+        // 2) New user
         sqlx::query(
             r#"
             INSERT INTO users (
@@ -119,6 +155,7 @@ impl UsersService {
         // 3) Always fetch final row.
         self.get_user_by_keycloak_id(keycloak_id).await
     }
+
 
     pub async fn pseudo_exists_for_other_user(
         &self,

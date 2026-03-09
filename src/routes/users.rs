@@ -1,18 +1,29 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, State, Query},
     http::HeaderMap,
     routing::get,
     Json, Router,
 };
 use uuid::Uuid;
+use serde::Deserialize;
 
 use crate::{
-    error::AppError, models::api::ApiResponse, services::extractor::extract_caller, state::AppState,
+    error::AppError,
+    models::{api::ApiResponse, User},
+    services::extractor::extract_caller,
+    state::AppState,
 };
+
+
+#[derive(Deserialize)]
+pub struct SearchUsersQuery {
+    pub q: String,
+}
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/:id", get(get_user))
 }
+
 async fn get_user(
     State(state): State<AppState>,
     Path(target_user_id): Path<Uuid>,
@@ -30,4 +41,22 @@ async fn get_user(
 
     let user = state.users_service.get_user_by_id(target_user_id).await?;
     Ok(Json(ApiResponse::success(user)))
+}
+
+
+
+// ==========================
+// GET /users/search?q=
+// ==========================
+pub async fn search_users(
+    State(state): State<AppState>,
+    Query(params): Query<SearchUsersQuery>,
+) -> Result<Json<ApiResponse<Vec<User>>>, AppError> {
+
+    let users = state
+        .users_service
+        .search_users(params.q)
+        .await?;
+
+    Ok(Json(ApiResponse::success(users)))
 }
