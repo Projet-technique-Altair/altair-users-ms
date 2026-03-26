@@ -42,6 +42,28 @@ impl UsersService {
     }
 
     // ==========================
+    // GET /user/pseudo
+    // ==========================
+    pub async fn get_user_pseudo_by_id(
+        &self,
+        user_id: Uuid,
+    ) -> Result<(Uuid, String), AppError> {
+        let row = sqlx::query_as::<_, (Uuid, String)>(
+            r#"
+            SELECT user_id, pseudo
+            FROM users
+            WHERE user_id = $1
+            "#
+        )
+        .bind(user_id)
+        .fetch_one(&self.db)
+        .await
+        .map_err(|_| AppError::NotFound("User not found".into()))?;
+
+        Ok(row)
+    }
+
+    // ==========================
     // GET /users/search?q=
     // ==========================
     pub async fn search_users(
