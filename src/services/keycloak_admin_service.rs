@@ -269,4 +269,16 @@ impl KeycloakAdminService {
 
         Ok(())
     }
+
+    pub fn toggle_realm_role(
+        &self,
+        keycloak_id: &str,
+        new_role: &str,
+    ) -> Result<(), AppError> {
+        let token = self.fetch_admin_token()?;
+
+        self.sync_realm_role(&token, keycloak_id, new_role)?;
+
+        Ok(())
+    }
 }
