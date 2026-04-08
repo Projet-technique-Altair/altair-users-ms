@@ -9,6 +9,12 @@ use crate::{
 };
 
 use crate::models::User;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+pub struct UpdatePasswordPayload {
+    pub new_password: String,
+}
 
 pub(crate) async fn me(
     State(state): State<AppState>,
@@ -48,8 +54,14 @@ pub(crate) async fn update_me(
         ));
     }
 
+    if update_input.pseudo.is_some() {
+        return Err(AppError::Forbidden(
+            "Username cannot be changed".to_string(),
+        ));
+    }
+
     // Reject local pseudo/email collisions early.
-    if let Some(ref pseudo) = update_input.pseudo {
+    /*if let Some(ref pseudo) = update_input.pseudo {
         let exists = state
             .users_service
             .pseudo_exists_for_other_user(&keycloak_id, pseudo)
@@ -59,7 +71,7 @@ pub(crate) async fn update_me(
                 "Pseudo already used by another user".to_string(),
             ));
         }
-    }
+    }*/
 
     if let Some(ref email) = update_input.email {
         let exists = state
@@ -83,7 +95,7 @@ pub(crate) async fn update_me(
     keycloak_service
         .sync_profile(
             &keycloak_id,
-            update_input.pseudo.as_deref(),
+            None,
             update_input.email.as_deref(),
             update_input.role.as_deref(),
         )
@@ -94,7 +106,7 @@ pub(crate) async fn update_me(
         .users_service
         .update_user_profile_by_keycloak_id(
             &keycloak_id,
-            update_input.pseudo.as_deref(),
+            None,
             update_input.email.as_deref(),
             update_input.role.as_deref(),
         )
@@ -157,4 +169,22 @@ fn resolve_toggle_roles(roles: &[String]) -> Result<(&'static str, &'static str)
         (true, true) => Ok(("creator", "learner")), // 🔥 fix ici
         (false, false) => Err(AppError::Forbidden("User has no valid role".into())),
     }
+}
+
+
+
+pub(crate) async fn update_password(
+    State(state): State<AppState>,
+    AuthUser { keycloak_id, .. }: AuthUser,
+    Json(payload): Json<UpdatePasswordPayload>,
+) -> Result<Json<ApiResponse<()>>, AppError> {
+
+    let keycloak_service = state.keycloak_admin_service.as_ref().ok_or_else(|| {
+        AppError::Internal("Keycloak admin not configured".to_string())
+    })?;
+
+    keycloak_service
+        .update_password(&keycloak_id, &payload.new_password)?;
+
+    Ok(Json(ApiResponse::success(())))
 }
