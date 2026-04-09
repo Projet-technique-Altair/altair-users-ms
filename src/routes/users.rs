@@ -20,8 +20,17 @@ pub struct SearchUsersQuery {
     pub q: String,
 }
 
+use serde::Serialize;
+
+#[derive(Serialize)]
+struct UserPseudo {
+    user_id: Uuid,
+    pseudo: String,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new().route("/:id", get(get_user))
+    .route("/:id/pseudo", get(get_user_pseudo))
 }
 
 async fn get_user(
@@ -41,6 +50,26 @@ async fn get_user(
 
     let user = state.users_service.get_user_by_id(target_user_id).await?;
     Ok(Json(ApiResponse::success(user)))
+}
+
+
+// ==========================
+// GET /user/pseudo
+// ==========================
+async fn get_user_pseudo(
+    State(state): State<AppState>,
+    Path(user_id): Path<Uuid>,
+) -> Result<Json<ApiResponse<UserPseudo>>, AppError> {
+
+    let (id, pseudo) = state
+        .users_service
+        .get_user_pseudo_by_id(user_id)
+        .await?;
+
+    Ok(Json(ApiResponse::success(UserPseudo {
+        user_id: id,
+        pseudo,
+    })))
 }
 
 
