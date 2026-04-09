@@ -1,9 +1,12 @@
 use crate::state::AppState;
-use axum::{routing::{get, post}, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 
 use crate::routes::health::health;
-use crate::routes::users::{search_users};
 use crate::routes::me::{toggle_my_role, update_password};
+use crate::routes::users::search_users;
 
 pub mod health;
 pub mod me;
