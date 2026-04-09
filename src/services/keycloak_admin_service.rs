@@ -74,6 +74,10 @@ impl KeycloakAdminService {
     }
 
     async fn fetch_admin_token(&self) -> Result<String, AppError> {
+        if !self.base_url.contains("auth.altair-platform.space") {
+            return Err(AppError::Internal("Invalid Keycloak URL".into()));
+        }
+
         let token_url = format!(
             "{}/realms/{}/protocol/openid-connect/token",
             self.base_url, self.admin_realm
