@@ -1,5 +1,3 @@
-use std::process::Command;
-
 use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
@@ -61,61 +59,51 @@ impl KeycloakAdminService {
         role: Option<&str>,
     ) -> Result<(), AppError> {
         // One admin token is reused for all Keycloak calls in this request.
-        let token = self.fetch_admin_token()?;
+        let token = self.fetch_admin_token().await?;
 
         if pseudo.is_some() || email.is_some() {
-            self.update_user_identity(&token, keycloak_id, pseudo, email)?;
+            self.update_user_identity(&token, keycloak_id, pseudo, email)
+                .await?;
         }
 
         if let Some(role_name) = role {
-            self.sync_realm_role(&token, keycloak_id, role_name)?;
+            self.sync_realm_role(&token, keycloak_id, role_name).await?;
         }
 
         Ok(())
     }
 
-    fn fetch_admin_token(&self) -> Result<String, AppError> {
+    async fn fetch_admin_token(&self) -> Result<String, AppError> {
         let token_url = format!(
             "{}/realms/{}/protocol/openid-connect/token",
             self.base_url, self.admin_realm
         );
 
-        let output = Command::new("curl")
-            .args([
-                "-sS",
-                "-f",
-                "-X",
-                "POST",
-                &token_url,
-                "-H",
-                "Content-Type: application/x-www-form-urlencoded",
-                "-d",
-                &format!(
-                    "grant_type=password&client_id={}&username={}&password={}",
-                    self.admin_client_id, self.admin_username, self.admin_password
-                ),
-            ])
-            .output()
-            .map_err(|e| AppError::Internal(format!("Failed to execute curl for token: {e}")))?;
+        let client = reqwest::Client::new();
 
-        if !output.status.success() {
-            return Err(AppError::Internal(format!(
-                "Keycloak token request failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            )));
-        }
+        let params = [
+            ("grant_type", "password"),
+            ("client_id", self.admin_client_id.as_str()),
+            ("username", self.admin_username.as_str()),
+            ("password", self.admin_password.as_str()),
+        ];
 
-        let payload: TokenResponse = serde_json::from_slice(&output.stdout).map_err(|e| {
-            AppError::Internal(format!(
-                "Failed to decode Keycloak token response: {e}; body={}",
-                String::from_utf8_lossy(&output.stdout)
-            ))
-        })?;
+        let response = client
+            .post(&token_url)
+            .form(&params)
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("Token request failed: {e}")))?;
+
+        let payload: TokenResponse = response
+            .json()
+            .await
+            .map_err(|e| AppError::Internal(format!("Decode error: {e}")))?;
 
         Ok(payload.access_token)
     }
 
-    fn update_user_identity(
+    async fn update_user_identity(
         &self,
         token: &str,
         keycloak_id: &str,
@@ -144,11 +132,12 @@ impl KeycloakAdminService {
             "{}/admin/realms/{}/users/{}",
             self.base_url, self.realm, keycloak_id
         );
-        self.exec_json_request("PUT", &url, token, &serde_json::Value::Object(body))?;
+        self.exec_json_request("PUT", &url, token, &serde_json::Value::Object(body))
+            .await?;
         Ok(())
     }
 
-    fn sync_realm_role(
+    async fn sync_realm_role(
         &self,
         token: &str,
         keycloak_id: &str,
@@ -159,8 +148,9 @@ impl KeycloakAdminService {
             self.base_url, self.realm, keycloak_id
         );
 
-        let current_roles: Vec<RoleRepresentation> =
-            self.exec_json_get(&current_url, token, "Keycloak roles fetch failed")?;
+        let current_roles: Vec<RoleRepresentation> = self
+            .exec_json_get(&current_url, token, "Keycloak roles fetch failed")
+            .await?;
 
         // Replace managed roles atomically (admin/creator/learner) with target role.
         let managed = ["admin", "creator", "learner"];
@@ -180,15 +170,17 @@ impl KeycloakAdminService {
                 &current_url,
                 token,
                 &serde_json::to_value(to_remove).map_err(|e| AppError::Internal(e.to_string()))?,
-            )?;
+            )
+            .await?;
         }
 
         let role_url = format!(
             "{}/admin/realms/{}/roles/{}",
             self.base_url, self.realm, target_role
         );
-        let target_representation: RoleRepresentation =
-            self.exec_json_get(&role_url, token, "Keycloak role lookup failed")?;
+        let target_representation: RoleRepresentation = self
+            .exec_json_get(&role_url, token, "Keycloak role lookup failed")
+            .await?;
 
         self.exec_json_request(
             "POST",
@@ -196,99 +188,76 @@ impl KeycloakAdminService {
             token,
             &serde_json::to_value(vec![target_representation])
                 .map_err(|e| AppError::Internal(e.to_string()))?,
-        )?;
+        )
+        .await?;
 
         Ok(())
     }
 
-    fn exec_json_get<T: for<'de> Deserialize<'de>>(
+    async fn exec_json_get<T: for<'de> Deserialize<'de>>(
         &self,
         url: &str,
         token: &str,
         error_prefix: &str,
     ) -> Result<T, AppError> {
-        let output = Command::new("curl")
-            .args([
-                "-sS",
-                "-f",
-                "-X",
-                "GET",
-                url,
-                "-H",
-                &format!("Authorization: Bearer {token}"),
-            ])
-            .output()
+        let client = reqwest::Client::new();
+
+        let response = client
+            .get(url)
+            .bearer_auth(token)
+            .send()
+            .await
             .map_err(|e| AppError::Internal(format!("{error_prefix}: {e}")))?;
 
-        if !output.status.success() {
-            return Err(AppError::Internal(format!(
-                "{error_prefix}: {}",
-                String::from_utf8_lossy(&output.stderr)
-            )));
-        }
-
-        serde_json::from_slice(&output.stdout).map_err(|e| {
-            AppError::Internal(format!(
-                "{error_prefix}: decode error {e}, body={}",
-                String::from_utf8_lossy(&output.stdout)
-            ))
-        })
+        response
+            .json::<T>()
+            .await
+            .map_err(|e| AppError::Internal(format!("{error_prefix}: {e}")))
     }
 
-    fn exec_json_request(
+    async fn exec_json_request(
         &self,
         method: &str,
         url: &str,
         token: &str,
         body: &serde_json::Value,
     ) -> Result<(), AppError> {
-        let payload = serde_json::to_string(body).map_err(|e| AppError::Internal(e.to_string()))?;
-        let output = Command::new("curl")
-            .args([
-                "-sS",
-                "-f",
-                "-X",
-                method,
-                url,
-                "-H",
-                &format!("Authorization: Bearer {token}"),
-                "-H",
-                "Content-Type: application/json",
-                "-d",
-                &payload,
-            ])
-            .output()
-            .map_err(|e| AppError::Internal(format!("Keycloak request failed: {e}")))?;
+        let client = reqwest::Client::new();
 
-        if !output.status.success() {
-            return Err(AppError::Internal(format!(
-                "Keycloak request failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            )));
-        }
+        let request = match method {
+            "POST" => client.post(url),
+            "PUT" => client.put(url),
+            "DELETE" => client.delete(url),
+            _ => return Err(AppError::Internal("Unsupported method".into())),
+        };
+
+        request
+            .bearer_auth(token)
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("Request failed: {e}")))?;
 
         Ok(())
     }
 
-    pub fn toggle_realm_role(
+    pub async fn toggle_realm_role(
         &self,
         keycloak_id: &str,
         new_role: &str,
     ) -> Result<(), AppError> {
-        let token = self.fetch_admin_token()?;
-
-        self.sync_realm_role(&token, keycloak_id, new_role)?;
+        let token = self.fetch_admin_token().await?;
+        self.sync_realm_role(&token, keycloak_id, new_role).await?;
 
         Ok(())
     }
 
-    pub fn update_password(
+    pub async fn update_password(
         &self,
         keycloak_id: &str,
         new_password: &str,
     ) -> Result<(), AppError> {
-
-        let token = self.fetch_admin_token()?;
+        let token = self.fetch_admin_token().await?;
 
         let url = format!(
             "{}/admin/realms/{}/users/{}/reset-password",
@@ -301,7 +270,7 @@ impl KeycloakAdminService {
             "temporary": false
         });
 
-        self.exec_json_request("PUT", &url, &token, &body)?;
+        self.exec_json_request("PUT", &url, &token, &body).await?;
 
         Ok(())
     }

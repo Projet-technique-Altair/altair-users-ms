@@ -44,16 +44,13 @@ impl UsersService {
     // ==========================
     // GET /user/pseudo
     // ==========================
-    pub async fn get_user_pseudo_by_id(
-        &self,
-        user_id: Uuid,
-    ) -> Result<(Uuid, String), AppError> {
+    pub async fn get_user_pseudo_by_id(&self, user_id: Uuid) -> Result<(Uuid, String), AppError> {
         let row = sqlx::query_as::<_, (Uuid, String)>(
             r#"
             SELECT user_id, pseudo
             FROM users
             WHERE user_id = $1
-            "#
+            "#,
         )
         .bind(user_id)
         .fetch_one(&self.db)
@@ -66,11 +63,7 @@ impl UsersService {
     // ==========================
     // GET /users/search?q=
     // ==========================
-    pub async fn search_users(
-        &self,
-        query: String,
-    ) -> Result<Vec<User>, AppError> {
-
+    pub async fn search_users(&self, query: String) -> Result<Vec<User>, AppError> {
         let pattern = format!("%{}%", query);
 
         let rows = sqlx::query_as::<_, UserRow>(
@@ -98,7 +91,6 @@ impl UsersService {
 
         Ok(rows.into_iter().map(|r| r.into()).collect())
     }
-
 
     pub async fn get_user_by_keycloak_id(&self, keycloak_id: &str) -> Result<User, AppError> {
         let row = sqlx::query_as::<_, UserRow>(
@@ -177,7 +169,6 @@ impl UsersService {
         // 3) Always fetch final row.
         self.get_user_by_keycloak_id(keycloak_id).await
     }
-
 
     pub async fn pseudo_exists_for_other_user(
         &self,
