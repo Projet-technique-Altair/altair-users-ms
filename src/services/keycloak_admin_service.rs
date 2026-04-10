@@ -196,52 +196,73 @@ impl KeycloakAdminService {
         Ok(())
     }
 
-    async fn exec_json_get<T: for<'de> Deserialize<'de>>(
-        &self,
-        url: &str,
-        token: &str,
-        error_prefix: &str,
-    ) -> Result<T, AppError> {
-        let client = reqwest::Client::new();
+   async fn exec_json_get<T: for<'de> Deserialize<'de>>(
+    &self,
+    url: &str,
+    token: &str,
+    error_prefix: &str,
+) -> Result<T, AppError> {
+    let client = reqwest::Client::new();
 
-        let response = client
-            .get(url)
-            .bearer_auth(token)
-            .send()
-            .await
-            .map_err(|e| AppError::Internal(format!("{error_prefix}: {e}")))?;
+    let response = client
+        .get(url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("{error_prefix}: {e}")))?;
 
-        response
-            .json::<T>()
-            .await
-            .map_err(|e| AppError::Internal(format!("{error_prefix}: {e}")))
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|e| AppError::Internal(format!("{error_prefix}: {e}")))?;
+
+    if !status.is_success() {
+        return Err(AppError::Internal(format!(
+            "{error_prefix}: {} - {}",
+            status, text
+        )));
     }
 
-    async fn exec_json_request(
-        &self,
-        method: &str,
-        url: &str,
-        token: &str,
-        body: &serde_json::Value,
-    ) -> Result<(), AppError> {
-        let client = reqwest::Client::new();
+    serde_json::from_str::<T>(&text)
+        .map_err(|e| AppError::Internal(format!("{error_prefix}: {e}")))
+}
 
-        let request = match method {
-            "POST" => client.post(url),
-            "PUT" => client.put(url),
-            "DELETE" => client.delete(url),
-            _ => return Err(AppError::Internal("Unsupported method".into())),
-        };
+   async fn exec_json_request(
+    &self,
+    method: &str,
+    url: &str,
+    token: &str,
+    body: &serde_json::Value,
+) -> Result<(), AppError> {
+    let client = reqwest::Client::new();
 
-        request
-            .bearer_auth(token)
-            .json(body)
-            .send()
-            .await
-            .map_err(|e| AppError::Internal(format!("Request failed: {e}")))?;
+    let request = match method {
+        "POST" => client.post(url),
+        "PUT" => client.put(url),
+        "DELETE" => client.delete(url),
+        _ => return Err(AppError::Internal("Unsupported method".into())),
+    };
 
-        Ok(())
+    let response = request
+        .bearer_auth(token)
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| AppError::Internal(format!("Request failed: {e}")))?;
+
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+
+    if !status.is_success() {
+        return Err(AppError::Internal(format!(
+            "Keycloak request failed: {} - {}",
+            status, text
+        )));
     }
+
+    Ok(())
+}
 
     pub async fn toggle_realm_role(
         &self,
