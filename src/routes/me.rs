@@ -136,20 +136,22 @@ fn resolve_effective_role(roles: &[String]) -> Result<&'static str, AppError> {
     }
 }
 
-
 pub(crate) async fn toggle_my_role(
     State(state): State<AppState>,
-    AuthUser { keycloak_id, roles, .. }: AuthUser,
+    AuthUser {
+        keycloak_id, roles, ..
+    }: AuthUser,
 ) -> Result<Json<ApiResponse<User>>, AppError> {
-
     let (_, new_role) = resolve_toggle_roles(&roles)?;
 
-    let keycloak_service = state.keycloak_admin_service.as_ref().ok_or_else(|| {
-        AppError::Internal("Keycloak admin not configured".to_string())
-    })?;
+    let keycloak_service = state
+        .keycloak_admin_service
+        .as_ref()
+        .ok_or_else(|| AppError::Internal("Keycloak admin not configured".to_string()))?;
 
     keycloak_service
-        .toggle_realm_role(&keycloak_id, new_role)?;
+        .toggle_realm_role(&keycloak_id, new_role)
+        .await?;
 
     let updated = state
         .users_service
@@ -166,25 +168,24 @@ fn resolve_toggle_roles(roles: &[String]) -> Result<(&'static str, &'static str)
     match (has_creator, has_learner) {
         (false, true) => Ok(("learner", "creator")),
         (true, false) => Ok(("creator", "learner")),
-        (true, true) => Ok(("creator", "learner")), // 🔥 fix ici
+        (true, true) => Ok(("creator", "learner")),
         (false, false) => Err(AppError::Forbidden("User has no valid role".into())),
     }
 }
-
-
 
 pub(crate) async fn update_password(
     State(state): State<AppState>,
     AuthUser { keycloak_id, .. }: AuthUser,
     Json(payload): Json<UpdatePasswordPayload>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
-
-    let keycloak_service = state.keycloak_admin_service.as_ref().ok_or_else(|| {
-        AppError::Internal("Keycloak admin not configured".to_string())
-    })?;
+    let keycloak_service = state
+        .keycloak_admin_service
+        .as_ref()
+        .ok_or_else(|| AppError::Internal("Keycloak admin not configured".to_string()))?;
 
     keycloak_service
-        .update_password(&keycloak_id, &payload.new_password)?;
+        .update_password(&keycloak_id, &payload.new_password)
+        .await?;
 
     Ok(Json(ApiResponse::success(())))
 }
