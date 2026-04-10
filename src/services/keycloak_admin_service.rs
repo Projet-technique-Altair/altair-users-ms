@@ -278,4 +278,40 @@ impl KeycloakAdminService {
 
         Ok(())
     }
+
+    pub fn toggle_realm_role(
+        &self,
+        keycloak_id: &str,
+        new_role: &str,
+    ) -> Result<(), AppError> {
+        let token = self.fetch_admin_token()?;
+
+        self.sync_realm_role(&token, keycloak_id, new_role)?;
+
+        Ok(())
+    }
+
+    pub fn update_password(
+        &self,
+        keycloak_id: &str,
+        new_password: &str,
+    ) -> Result<(), AppError> {
+
+        let token = self.fetch_admin_token()?;
+
+        let url = format!(
+            "{}/admin/realms/{}/users/{}/reset-password",
+            self.base_url, self.realm, keycloak_id
+        );
+
+        let body = serde_json::json!({
+            "type": "password",
+            "value": new_password,
+            "temporary": false
+        });
+
+        self.exec_json_request("PUT", &url, &token, &body)?;
+
+        Ok(())
+    }
 }
