@@ -1,10 +1,14 @@
-use crate::services::{keycloak_admin_service::KeycloakAdminService, users_service::UsersService};
+use crate::services::{
+    gamification_sync_service::GamificationSyncService,
+    keycloak_admin_service::KeycloakAdminService, users_service::UsersService,
+};
 use sqlx::PgPool;
 
 #[derive(Clone)]
 pub struct AppState {
     pub users_service: UsersService,
     pub keycloak_admin_service: Option<KeycloakAdminService>,
+    pub gamification_sync_service: Option<GamificationSyncService>,
 }
 
 impl AppState {
@@ -19,10 +23,12 @@ impl AppState {
 
         // Optional: PATCH /me keycloak sync is enabled only when env is present.
         let keycloak_admin_service = KeycloakAdminService::from_env();
+        let gamification_sync_service = GamificationSyncService::from_env();
 
         Self {
             users_service,
             keycloak_admin_service,
+            gamification_sync_service,
         }
     }
 }
@@ -45,6 +51,7 @@ impl AppState {
         Self {
             users_service,
             keycloak_admin_service: None,
+            gamification_sync_service: None,
         }
     }
 }

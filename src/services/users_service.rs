@@ -6,6 +6,13 @@ use crate::{
     models::user::{User, UserRow},
 };
 
+#[derive(Debug, Clone)]
+pub struct UserLoginResolution {
+    pub user: User,
+    pub is_new_user: bool,
+    pub previous_last_login: Option<chrono::NaiveDateTime>,
+}
+
 #[derive(Clone)]
 pub struct UsersService {
     db: PgPool,
@@ -124,9 +131,31 @@ impl UsersService {
         name: &str,
         pseudo: &str,
         email: &str,
-    ) -> Result<User, AppError> {
-        // 1) Existing user: touch last_login and return fresh row.
-        if self.get_user_by_keycloak_id(keycloak_id).await.is_ok() {
+    ) -> Result<UserLoginResolution, AppError> {
+        let existing_user = sqlx::query_as::<_, UserRow>(
+            r#"
+            SELECT
+                user_id,
+                keycloak_id,
+                role,
+                name,
+                pseudo,
+                email,
+                avatar,
+                last_login,
+                created_at
+            FROM users
+            WHERE keycloak_id = $1
+            "#,
+        )
+        .bind(keycloak_id)
+        .fetch_optional(&self.db)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        if let Some(existing_user) = existing_user {
+            let previous_last_login = existing_user.last_login;
+
             sqlx::query(
                 r#"
                 UPDATE users
@@ -139,10 +168,13 @@ impl UsersService {
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
-            return self.get_user_by_keycloak_id(keycloak_id).await;
+            return Ok(UserLoginResolution {
+                user: self.get_user_by_keycloak_id(keycloak_id).await?,
+                is_new_user: false,
+                previous_last_login,
+            });
         }
 
-        // 2) New user
         sqlx::query(
             r#"
             INSERT INTO users (
@@ -166,8 +198,11 @@ impl UsersService {
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-        // 3) Always fetch final row.
-        self.get_user_by_keycloak_id(keycloak_id).await
+        Ok(UserLoginResolution {
+            user: self.get_user_by_keycloak_id(keycloak_id).await?,
+            is_new_user: true,
+            previous_last_login: None,
+        })
     }
 
     pub async fn pseudo_exists_for_other_user(

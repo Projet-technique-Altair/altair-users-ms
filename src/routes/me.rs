@@ -28,12 +28,18 @@ pub(crate) async fn me(
 ) -> Result<Json<ApiResponse<User>>, AppError> {
     let role = resolve_effective_role(&roles)?;
 
-    let user = state
+    let resolution = state
         .users_service
         .get_or_create_user_from_keycloak(&keycloak_id, role, &name, &pseudo, &email)
         .await?;
 
-    Ok(Json(ApiResponse::success(user)))
+    if let Some(gamification_sync) = &state.gamification_sync_service {
+        if let Err(error) = gamification_sync.sync_login_progress(&resolution).await {
+            tracing::warn!("gamification login sync failed: {}", error);
+        }
+    }
+
+    Ok(Json(ApiResponse::success(resolution.user)))
 }
 
 pub(crate) async fn update_me(
