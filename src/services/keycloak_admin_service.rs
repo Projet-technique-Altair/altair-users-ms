@@ -25,60 +25,6 @@ struct RoleRepresentation {
     name: Option<String>,
 }
 
-enum KeycloakEndpoint<'a> {
-    Token { realm: &'a str },
-    AdminUser { realm: &'a str, user_id: &'a str },
-    RealmRoleMappings { realm: &'a str, user_id: &'a str },
-    RealmRole { realm: &'a str, role: &'a str },
-    ResetPassword { realm: &'a str, user_id: &'a str },
-}
-
-impl<'a> KeycloakEndpoint<'a> {
-    fn segments(&self) -> Result<Vec<&'a str>, AppError> {
-        match self {
-            Self::Token { realm } => {
-                validate_keycloak_segment(realm, "realm")?;
-                Ok(vec!["realms", realm, "protocol", "openid-connect", "token"])
-            }
-            Self::AdminUser { realm, user_id } => {
-                validate_keycloak_segment(realm, "realm")?;
-                validate_keycloak_segment(user_id, "user_id")?;
-                Ok(vec!["admin", "realms", realm, "users", user_id])
-            }
-            Self::RealmRoleMappings { realm, user_id } => {
-                validate_keycloak_segment(realm, "realm")?;
-                validate_keycloak_segment(user_id, "user_id")?;
-                Ok(vec![
-                    "admin",
-                    "realms",
-                    realm,
-                    "users",
-                    user_id,
-                    "role-mappings",
-                    "realm",
-                ])
-            }
-            Self::RealmRole { realm, role } => {
-                validate_keycloak_segment(realm, "realm")?;
-                validate_keycloak_segment(role, "role")?;
-                Ok(vec!["admin", "realms", realm, "roles", role])
-            }
-            Self::ResetPassword { realm, user_id } => {
-                validate_keycloak_segment(realm, "realm")?;
-                validate_keycloak_segment(user_id, "user_id")?;
-                Ok(vec![
-                    "admin",
-                    "realms",
-                    realm,
-                    "users",
-                    user_id,
-                    "reset-password",
-                ])
-            }
-        }
-    }
-}
-
 impl KeycloakAdminService {
     pub fn from_env() -> Option<Self> {
         // Service is disabled if mandatory admin env vars are missing.
@@ -131,6 +77,14 @@ impl KeycloakAdminService {
     }
 
     async fn fetch_admin_token(&self) -> Result<String, AppError> {
+        let token_url = self.build_url(&[
+            "realms",
+            self.admin_realm.as_str(),
+            "protocol",
+            "openid-connect",
+            "token",
+        ])?;
+
         let params = [
             ("grant_type", "password"),
             ("client_id", self.admin_client_id.as_str()),
@@ -139,9 +93,8 @@ impl KeycloakAdminService {
         ];
 
         let response = self
-            .post(KeycloakEndpoint::Token {
-                realm: self.admin_realm.as_str(),
-            })?
+            .http
+            .post(token_url)
             .form(&params)
             .send()
             .await
@@ -190,12 +143,11 @@ impl KeycloakAdminService {
             body.insert("emailVerified".to_string(), serde_json::Value::Bool(true));
         }
 
+        let url =
+            self.build_url(&["admin", "realms", self.realm.as_str(), "users", keycloak_id])?;
         self.exec_json_request(
             reqwest::Method::PUT,
-            KeycloakEndpoint::AdminUser {
-                realm: self.realm.as_str(),
-                user_id: keycloak_id,
-            },
+            url,
             token,
             &serde_json::Value::Object(body),
         )
@@ -209,15 +161,18 @@ impl KeycloakAdminService {
         keycloak_id: &str,
         target_role: &str,
     ) -> Result<(), AppError> {
+        let current_url = self.build_url(&[
+            "admin",
+            "realms",
+            self.realm.as_str(),
+            "users",
+            keycloak_id,
+            "role-mappings",
+            "realm",
+        ])?;
+
         let current_roles: Vec<RoleRepresentation> = self
-            .exec_json_get(
-                KeycloakEndpoint::RealmRoleMappings {
-                    realm: self.realm.as_str(),
-                    user_id: keycloak_id,
-                },
-                token,
-                "Keycloak roles fetch failed",
-            )
+            .exec_json_get(current_url.clone(), token, "Keycloak roles fetch failed")
             .await?;
 
         // Replace managed roles atomically (admin/creator/learner) with target role.
@@ -235,33 +190,22 @@ impl KeycloakAdminService {
         if !to_remove.is_empty() {
             self.exec_json_request(
                 reqwest::Method::DELETE,
-                KeycloakEndpoint::RealmRoleMappings {
-                    realm: self.realm.as_str(),
-                    user_id: keycloak_id,
-                },
+                current_url.clone(),
                 token,
                 &serde_json::to_value(to_remove).map_err(|e| AppError::Internal(e.to_string()))?,
             )
             .await?;
         }
 
+        let role_url =
+            self.build_url(&["admin", "realms", self.realm.as_str(), "roles", target_role])?;
         let target_representation: RoleRepresentation = self
-            .exec_json_get(
-                KeycloakEndpoint::RealmRole {
-                    realm: self.realm.as_str(),
-                    role: target_role,
-                },
-                token,
-                "Keycloak role lookup failed",
-            )
+            .exec_json_get(role_url, token, "Keycloak role lookup failed")
             .await?;
 
         self.exec_json_request(
             reqwest::Method::POST,
-            KeycloakEndpoint::RealmRoleMappings {
-                realm: self.realm.as_str(),
-                user_id: keycloak_id,
-            },
+            current_url,
             token,
             &serde_json::to_value(vec![target_representation])
                 .map_err(|e| AppError::Internal(e.to_string()))?,
@@ -273,12 +217,13 @@ impl KeycloakAdminService {
 
     async fn exec_json_get<T: for<'de> Deserialize<'de>>(
         &self,
-        endpoint: KeycloakEndpoint<'_>,
+        url: reqwest::Url,
         token: &str,
         error_prefix: &str,
     ) -> Result<T, AppError> {
         let response = self
-            .get(endpoint)?
+            .http
+            .get(url)
             .bearer_auth(token)
             .send()
             .await
@@ -304,12 +249,13 @@ impl KeycloakAdminService {
     async fn exec_json_request(
         &self,
         method: reqwest::Method,
-        endpoint: KeycloakEndpoint<'_>,
+        url: reqwest::Url,
         token: &str,
         body: &serde_json::Value,
     ) -> Result<(), AppError> {
         let response = self
-            .request_with_body(method, endpoint)?
+            .http
+            .request(method, url)
             .bearer_auth(token)
             .json(body)
             .send()
@@ -329,27 +275,7 @@ impl KeycloakAdminService {
         Ok(())
     }
 
-    fn get(&self, endpoint: KeycloakEndpoint<'_>) -> Result<reqwest::RequestBuilder, AppError> {
-        let url = self.build_endpoint_url(endpoint)?;
-        Ok(self.http.get(url))
-    }
-
-    fn post(&self, endpoint: KeycloakEndpoint<'_>) -> Result<reqwest::RequestBuilder, AppError> {
-        let url = self.build_endpoint_url(endpoint)?;
-        Ok(self.http.post(url))
-    }
-
-    fn request_with_body(
-        &self,
-        method: reqwest::Method,
-        endpoint: KeycloakEndpoint<'_>,
-    ) -> Result<reqwest::RequestBuilder, AppError> {
-        let url = self.build_endpoint_url(endpoint)?;
-        Ok(self.http.request(method, url))
-    }
-
-    fn build_endpoint_url(&self, endpoint: KeycloakEndpoint<'_>) -> Result<reqwest::Url, AppError> {
-        let path_segments = endpoint.segments()?;
+    fn build_url(&self, path_segments: &[&str]) -> Result<reqwest::Url, AppError> {
         let mut url = self.base_url.clone();
         let mut segments = url
             .path_segments_mut()
@@ -357,7 +283,13 @@ impl KeycloakAdminService {
         segments.pop_if_empty();
 
         for segment in path_segments {
-            segments.push(segment);
+            let trimmed = segment.trim();
+            if trimmed.is_empty() {
+                return Err(AppError::Internal(
+                    "Invalid empty Keycloak path segment".into(),
+                ));
+            }
+            segments.push(trimmed);
         }
 
         drop(segments);
@@ -383,43 +315,26 @@ impl KeycloakAdminService {
     ) -> Result<(), AppError> {
         let token = self.fetch_admin_token().await?;
 
+        let url = self.build_url(&[
+            "admin",
+            "realms",
+            self.realm.as_str(),
+            "users",
+            keycloak_id,
+            "reset-password",
+        ])?;
+
         let body = serde_json::json!({
             "type": "password",
             "value": new_password,
             "temporary": false
         });
 
-        self.exec_json_request(
-            reqwest::Method::PUT,
-            KeycloakEndpoint::ResetPassword {
-                realm: self.realm.as_str(),
-                user_id: keycloak_id,
-            },
-            &token,
-            &body,
-        )
-        .await?;
+        self.exec_json_request(reqwest::Method::PUT, url, &token, &body)
+            .await?;
 
         Ok(())
     }
-}
-
-fn validate_keycloak_segment(value: &str, label: &str) -> Result<(), AppError> {
-    let trimmed = value.trim();
-
-    if trimmed.is_empty()
-        || trimmed != value
-        || trimmed.contains('/')
-        || trimmed.contains('?')
-        || trimmed.contains('#')
-        || trimmed.chars().any(char::is_control)
-    {
-        return Err(AppError::Internal(format!(
-            "Invalid Keycloak path segment: {label}"
-        )));
-    }
-
-    Ok(())
 }
 
 fn parse_keycloak_base_url(raw: &str) -> Option<reqwest::Url> {
@@ -479,36 +394,15 @@ mod tests {
     }
 
     #[test]
-    fn build_endpoint_url_encodes_static_path_segments() {
+    fn build_url_encodes_path_segments() {
         let service = service_with_base_url("https://keycloak.local/auth");
         let url = service
-            .build_endpoint_url(KeycloakEndpoint::RealmRoleMappings {
-                realm: "altair",
-                user_id: "00000000-0000-4000-8000-000000000000",
-            })
+            .build_url(&["admin", "realms", "altair", "users", "a/b"])
             .unwrap();
 
         assert_eq!(
             url.as_str(),
-            "https://keycloak.local/auth/admin/realms/altair/users/00000000-0000-4000-8000-000000000000/role-mappings/realm"
+            "https://keycloak.local/auth/admin/realms/altair/users/a%2Fb"
         );
-    }
-
-    #[test]
-    fn build_endpoint_url_rejects_path_injection_segments() {
-        let service = service_with_base_url("https://keycloak.local/auth");
-
-        assert!(service
-            .build_endpoint_url(KeycloakEndpoint::AdminUser {
-                realm: "altair",
-                user_id: "a/b",
-            })
-            .is_err());
-        assert!(service
-            .build_endpoint_url(KeycloakEndpoint::RealmRole {
-                realm: "altair",
-                role: "admin?redirect=http://evil.test",
-            })
-            .is_err());
     }
 }
