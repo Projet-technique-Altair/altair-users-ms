@@ -66,19 +66,6 @@ pub(crate) async fn update_me(
         ));
     }
 
-    // Reject local pseudo/email collisions early.
-    /*if let Some(ref pseudo) = update_input.pseudo {
-        let exists = state
-            .users_service
-            .pseudo_exists_for_other_user(&keycloak_id, pseudo)
-            .await?;
-        if exists {
-            return Err(AppError::Conflict(
-                "Pseudo already used by another user".to_string(),
-            ));
-        }
-    }*/
-
     if let Some(ref email) = update_input.email {
         let exists = state
             .users_service
