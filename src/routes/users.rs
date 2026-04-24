@@ -4,7 +4,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -19,12 +19,26 @@ pub struct SearchUsersQuery {
     pub q: String,
 }
 
-use serde::Serialize;
+#[derive(Deserialize)]
+pub struct AdminUsersQuery {
+    pub q: Option<String>,
+    pub role: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
 
 #[derive(Serialize)]
 struct UserPseudo {
     user_id: Uuid,
     pseudo: String,
+}
+
+#[derive(Serialize)]
+pub struct PaginatedUsers {
+    items: Vec<User>,
+    total: i64,
+    limit: i64,
+    offset: i64,
 }
 
 pub fn routes() -> Router<AppState> {
@@ -77,4 +91,36 @@ pub async fn search_users(
     let users = state.users_service.search_users(params.q).await?;
 
     Ok(Json(ApiResponse::success(users)))
+}
+
+// ==========================
+// GET /admin/users
+// ==========================
+pub async fn list_users_admin(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(params): Query<AdminUsersQuery>,
+) -> Result<Json<ApiResponse<PaginatedUsers>>, AppError> {
+    let caller = extract_caller(&headers)?;
+    let is_admin = caller.roles.iter().any(|r| r == "admin");
+
+    if !is_admin {
+        return Err(AppError::Forbidden(
+            "Admin role is required to list users".to_string(),
+        ));
+    }
+
+    let limit = params.limit.unwrap_or(200).clamp(1, 500);
+    let offset = params.offset.unwrap_or(0).max(0);
+    let (items, total) = state
+        .users_service
+        .list_users_admin(params.q, params.role, limit, offset)
+        .await?;
+
+    Ok(Json(ApiResponse::success(PaginatedUsers {
+        items,
+        total,
+        limit,
+        offset,
+    })))
 }

@@ -6,7 +6,7 @@ use axum::{
 
 use crate::routes::health::health;
 use crate::routes::me::{toggle_my_role, update_password};
-use crate::routes::users::search_users;
+use crate::routes::users::{list_users_admin, search_users};
 
 pub mod health;
 pub mod me;
@@ -15,6 +15,7 @@ pub mod users;
 pub fn init_routes() -> Router<AppState> {
     Router::new()
         .route("/health", get(health))
+        .route("/admin/users", get(list_users_admin))
         .route("/me", get(me::me).patch(me::update_me))
         .route("/search", get(search_users))
         .route("/me/", get(me::me).patch(me::update_me))

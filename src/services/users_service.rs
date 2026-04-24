@@ -99,6 +99,66 @@ impl UsersService {
         Ok(rows.into_iter().map(|r| r.into()).collect())
     }
 
+    pub async fn list_users_admin(
+        &self,
+        query: Option<String>,
+        role: Option<String>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(Vec<User>, i64), AppError> {
+        let query_pattern = query
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("%{}%", value));
+        let role_filter = role
+            .map(|value| value.trim().to_lowercase())
+            .filter(|value| !value.is_empty());
+
+        let rows = sqlx::query_as::<_, UserRow>(
+            r#"
+            SELECT
+                user_id,
+                keycloak_id,
+                role,
+                name,
+                pseudo,
+                email,
+                avatar,
+                last_login,
+                created_at
+            FROM users
+            WHERE ($1::TEXT IS NULL OR pseudo ILIKE $1 OR email ILIKE $1 OR name ILIKE $1)
+              AND ($2::TEXT IS NULL OR role = $2)
+            ORDER BY created_at DESC
+            LIMIT $3
+            OFFSET $4
+            "#,
+        )
+        .bind(query_pattern.as_deref())
+        .bind(role_filter.as_deref())
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.db)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        let total = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM users
+            WHERE ($1::TEXT IS NULL OR pseudo ILIKE $1 OR email ILIKE $1 OR name ILIKE $1)
+              AND ($2::TEXT IS NULL OR role = $2)
+            "#,
+        )
+        .bind(query_pattern.as_deref())
+        .bind(role_filter.as_deref())
+        .fetch_one(&self.db)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        Ok((rows.into_iter().map(|row| row.into()).collect(), total))
+    }
+
     pub async fn get_user_by_keycloak_id(&self, keycloak_id: &str) -> Result<User, AppError> {
         let row = sqlx::query_as::<_, UserRow>(
             r#"
