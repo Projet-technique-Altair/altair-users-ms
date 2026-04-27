@@ -6,6 +6,29 @@ use crate::{
     models::user::{User, UserRow},
 };
 
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+pub struct UserSanction {
+    pub sanction_id: Uuid,
+    pub user_id: Uuid,
+    pub actor_user_id: Uuid,
+    pub action: String,
+    pub reason: String,
+    pub status: String,
+    pub expires_at: Option<chrono::NaiveDateTime>,
+    pub created_at: chrono::NaiveDateTime,
+    pub resolved_at: Option<chrono::NaiveDateTime>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+pub struct UserAuditLog {
+    pub audit_id: Uuid,
+    pub actor_user_id: Option<Uuid>,
+    pub target_user_id: Option<Uuid>,
+    pub action: String,
+    pub metadata: serde_json::Value,
+    pub created_at: chrono::NaiveDateTime,
+}
+
 #[derive(Debug, Clone)]
 pub struct UserLoginResolution {
     pub user: User,
@@ -30,6 +53,7 @@ impl UsersService {
                 user_id,
                 keycloak_id,
                 role,
+                account_status,
                 name,
                 pseudo,
                 email,
@@ -79,6 +103,7 @@ impl UsersService {
                 user_id,
                 keycloak_id,
                 role,
+                account_status,
                 name,
                 pseudo,
                 email,
@@ -103,6 +128,7 @@ impl UsersService {
         &self,
         query: Option<String>,
         role: Option<String>,
+        account_status: Option<String>,
         limit: i64,
         offset: i64,
     ) -> Result<(Vec<User>, i64), AppError> {
@@ -113,6 +139,9 @@ impl UsersService {
         let role_filter = role
             .map(|value| value.trim().to_lowercase())
             .filter(|value| !value.is_empty());
+        let status_filter = account_status
+            .map(|value| value.trim().to_lowercase())
+            .filter(|value| !value.is_empty());
 
         let rows = sqlx::query_as::<_, UserRow>(
             r#"
@@ -120,6 +149,7 @@ impl UsersService {
                 user_id,
                 keycloak_id,
                 role,
+                account_status,
                 name,
                 pseudo,
                 email,
@@ -129,13 +159,15 @@ impl UsersService {
             FROM users
             WHERE ($1::TEXT IS NULL OR pseudo ILIKE $1 OR email ILIKE $1 OR name ILIKE $1)
               AND ($2::TEXT IS NULL OR role = $2)
+              AND ($3::TEXT IS NULL OR account_status = $3)
             ORDER BY created_at DESC
-            LIMIT $3
-            OFFSET $4
+            LIMIT $4
+            OFFSET $5
             "#,
         )
         .bind(query_pattern.as_deref())
         .bind(role_filter.as_deref())
+        .bind(status_filter.as_deref())
         .bind(limit)
         .bind(offset)
         .fetch_all(&self.db)
@@ -148,10 +180,12 @@ impl UsersService {
             FROM users
             WHERE ($1::TEXT IS NULL OR pseudo ILIKE $1 OR email ILIKE $1 OR name ILIKE $1)
               AND ($2::TEXT IS NULL OR role = $2)
+              AND ($3::TEXT IS NULL OR account_status = $3)
             "#,
         )
         .bind(query_pattern.as_deref())
         .bind(role_filter.as_deref())
+        .bind(status_filter.as_deref())
         .fetch_one(&self.db)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
@@ -166,6 +200,7 @@ impl UsersService {
                 user_id,
                 keycloak_id,
                 role,
+                account_status,
                 name,
                 pseudo,
                 email,
@@ -198,6 +233,7 @@ impl UsersService {
                 user_id,
                 keycloak_id,
                 role,
+                account_status,
                 name,
                 pseudo,
                 email,
@@ -240,12 +276,13 @@ impl UsersService {
             INSERT INTO users (
                 keycloak_id,
                 role,
+                account_status,
                 name,
                 pseudo,
                 email,
                 last_login
             )
-            VALUES ($1, $2, $3, $4, $5, NOW())
+            VALUES ($1, $2, 'active', $3, $4, $5, NOW())
             ON CONFLICT (keycloak_id) DO NOTHING
             "#,
         )
@@ -317,5 +354,230 @@ impl UsersService {
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
         self.get_user_by_keycloak_id(keycloak_id).await
+    }
+
+    pub async fn update_account_status_admin(
+        &self,
+        actor_user_id: Uuid,
+        target_user_id: Uuid,
+        account_status: &str,
+        reason: &str,
+    ) -> Result<User, AppError> {
+        if !matches!(account_status, "active" | "suspended" | "banned") {
+            return Err(AppError::BadRequest(
+                "account_status must be active, suspended, or banned".into(),
+            ));
+        }
+
+        let row = sqlx::query_as::<_, UserRow>(
+            r#"
+            UPDATE users
+            SET account_status = $1
+            WHERE user_id = $2
+            RETURNING
+                user_id,
+                keycloak_id,
+                role,
+                account_status,
+                name,
+                pseudo,
+                email,
+                avatar,
+                last_login,
+                created_at
+            "#,
+        )
+        .bind(account_status)
+        .bind(target_user_id)
+        .fetch_optional(&self.db)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or_else(|| AppError::NotFound("User not found".into()))?;
+
+        self.insert_audit_log(
+            Some(actor_user_id),
+            Some(target_user_id),
+            "user.account_status.updated",
+            serde_json::json!({
+                "account_status": account_status,
+                "reason": reason.trim()
+            }),
+        )
+        .await?;
+
+        Ok(row.into())
+    }
+
+    pub async fn apply_sanction_admin(
+        &self,
+        actor_user_id: Uuid,
+        target_user_id: Uuid,
+        action: &str,
+        reason: &str,
+        duration_days: Option<i64>,
+    ) -> Result<(User, UserSanction), AppError> {
+        if !matches!(action, "warn" | "suspend" | "ban") {
+            return Err(AppError::BadRequest(
+                "sanction action must be warn, suspend, or ban".into(),
+            ));
+        }
+
+        let trimmed_reason = reason.trim();
+        if trimmed_reason.is_empty() {
+            return Err(AppError::BadRequest("reason is required".into()));
+        }
+
+        let expires_at = if action == "suspend" {
+            duration_days
+                .filter(|days| *days > 0)
+                .map(|days| chrono::Utc::now().naive_utc() + chrono::Duration::days(days))
+        } else {
+            None
+        };
+
+        let sanction = sqlx::query_as::<_, UserSanction>(
+            r#"
+            INSERT INTO user_sanctions (
+                user_id,
+                actor_user_id,
+                action,
+                reason,
+                status,
+                expires_at
+            )
+            VALUES ($1, $2, $3, $4, 'active', $5)
+            RETURNING
+                sanction_id,
+                user_id,
+                actor_user_id,
+                action,
+                reason,
+                status,
+                expires_at,
+                created_at,
+                resolved_at
+            "#,
+        )
+        .bind(target_user_id)
+        .bind(actor_user_id)
+        .bind(action)
+        .bind(trimmed_reason)
+        .bind(expires_at)
+        .fetch_one(&self.db)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        let user = match action {
+            "warn" => self.get_user_by_id(target_user_id).await?,
+            "suspend" => {
+                self.update_account_status_admin(
+                    actor_user_id,
+                    target_user_id,
+                    "suspended",
+                    trimmed_reason,
+                )
+                .await?
+            }
+            "ban" => {
+                self.update_account_status_admin(
+                    actor_user_id,
+                    target_user_id,
+                    "banned",
+                    trimmed_reason,
+                )
+                .await?
+            }
+            _ => unreachable!(),
+        };
+
+        self.insert_audit_log(
+            Some(actor_user_id),
+            Some(target_user_id),
+            "user.sanction.created",
+            serde_json::json!({
+                "sanction_id": sanction.sanction_id,
+                "action": action,
+                "reason": trimmed_reason,
+                "expires_at": expires_at
+            }),
+        )
+        .await?;
+
+        Ok((user, sanction))
+    }
+
+    pub async fn list_user_sanctions(&self, user_id: Uuid) -> Result<Vec<UserSanction>, AppError> {
+        sqlx::query_as::<_, UserSanction>(
+            r#"
+            SELECT
+                sanction_id,
+                user_id,
+                actor_user_id,
+                action,
+                reason,
+                status,
+                expires_at,
+                created_at,
+                resolved_at
+            FROM user_sanctions
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&self.db)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))
+    }
+
+    pub async fn list_user_audit_logs(&self, user_id: Uuid) -> Result<Vec<UserAuditLog>, AppError> {
+        sqlx::query_as::<_, UserAuditLog>(
+            r#"
+            SELECT
+                audit_id,
+                actor_user_id,
+                target_user_id,
+                action,
+                metadata,
+                created_at
+            FROM user_audit_logs
+            WHERE target_user_id = $1 OR actor_user_id = $1
+            ORDER BY created_at DESC
+            LIMIT 100
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&self.db)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))
+    }
+
+    async fn insert_audit_log(
+        &self,
+        actor_user_id: Option<Uuid>,
+        target_user_id: Option<Uuid>,
+        action: &str,
+        metadata: serde_json::Value,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            r#"
+            INSERT INTO user_audit_logs (
+                actor_user_id,
+                target_user_id,
+                action,
+                metadata
+            )
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(actor_user_id)
+        .bind(target_user_id)
+        .bind(action)
+        .bind(metadata)
+        .execute(&self.db)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        Ok(())
     }
 }

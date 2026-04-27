@@ -11,6 +11,7 @@ use crate::{
     error::AppError,
     models::{api::ApiResponse, User},
     services::extractor::extract_caller,
+    services::users_service::{UserAuditLog, UserSanction},
     state::AppState,
 };
 
@@ -23,8 +24,22 @@ pub struct SearchUsersQuery {
 pub struct AdminUsersQuery {
     pub q: Option<String>,
     pub role: Option<String>,
+    pub account_status: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateSanctionRequest {
+    pub action: String,
+    pub reason: String,
+    pub duration_days: Option<i64>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateAccountStatusRequest {
+    pub account_status: String,
+    pub reason: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -41,10 +56,34 @@ pub struct PaginatedUsers {
     offset: i64,
 }
 
+#[derive(Serialize)]
+pub struct AdminUserDetail {
+    user: User,
+    sanctions: Vec<UserSanction>,
+    audit_logs: Vec<UserAuditLog>,
+}
+
+#[derive(Serialize)]
+pub struct AdminSanctionResponse {
+    user: User,
+    sanction: UserSanction,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/:id", get(get_user))
         .route("/:id/pseudo", get(get_user_pseudo))
+}
+
+fn ensure_admin(headers: &HeaderMap) -> Result<crate::services::extractor::Caller, AppError> {
+    let caller = extract_caller(headers)?;
+    let is_admin = caller.roles.iter().any(|r| r == "admin");
+
+    if !is_admin {
+        return Err(AppError::Forbidden("Admin role is required".to_string()));
+    }
+
+    Ok(caller)
 }
 
 async fn get_user(
@@ -101,20 +140,13 @@ pub async fn list_users_admin(
     headers: HeaderMap,
     Query(params): Query<AdminUsersQuery>,
 ) -> Result<Json<ApiResponse<PaginatedUsers>>, AppError> {
-    let caller = extract_caller(&headers)?;
-    let is_admin = caller.roles.iter().any(|r| r == "admin");
-
-    if !is_admin {
-        return Err(AppError::Forbidden(
-            "Admin role is required to list users".to_string(),
-        ));
-    }
+    ensure_admin(&headers)?;
 
     let limit = params.limit.unwrap_or(200).clamp(1, 500);
     let offset = params.offset.unwrap_or(0).max(0);
     let (items, total) = state
         .users_service
-        .list_users_admin(params.q, params.role, limit, offset)
+        .list_users_admin(params.q, params.role, params.account_status, limit, offset)
         .await?;
 
     Ok(Json(ApiResponse::success(PaginatedUsers {
@@ -123,4 +155,71 @@ pub async fn list_users_admin(
         limit,
         offset,
     })))
+}
+
+pub async fn get_admin_user_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<Uuid>,
+) -> Result<Json<ApiResponse<AdminUserDetail>>, AppError> {
+    ensure_admin(&headers)?;
+
+    let user = state.users_service.get_user_by_id(user_id).await?;
+    let sanctions = state.users_service.list_user_sanctions(user_id).await?;
+    let audit_logs = state.users_service.list_user_audit_logs(user_id).await?;
+
+    Ok(Json(ApiResponse::success(AdminUserDetail {
+        user,
+        sanctions,
+        audit_logs,
+    })))
+}
+
+pub async fn create_admin_user_sanction(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<Uuid>,
+    Json(body): Json<CreateSanctionRequest>,
+) -> Result<Json<ApiResponse<AdminSanctionResponse>>, AppError> {
+    let caller = ensure_admin(&headers)?;
+
+    let (user, sanction) = state
+        .users_service
+        .apply_sanction_admin(
+            caller.user_id,
+            user_id,
+            body.action.trim(),
+            body.reason.trim(),
+            body.duration_days,
+        )
+        .await?;
+
+    Ok(Json(ApiResponse::success(AdminSanctionResponse {
+        user,
+        sanction,
+    })))
+}
+
+pub async fn update_admin_account_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<Uuid>,
+    Json(body): Json<UpdateAccountStatusRequest>,
+) -> Result<Json<ApiResponse<User>>, AppError> {
+    let caller = ensure_admin(&headers)?;
+    let reason = body
+        .reason
+        .unwrap_or_else(|| "Manual admin status update".into());
+
+    let user = state
+        .users_service
+        .update_account_status_admin(
+            caller.user_id,
+            user_id,
+            body.account_status.trim(),
+            reason.trim(),
+        )
+        .await?;
+
+    Ok(Json(ApiResponse::success(user)))
 }
