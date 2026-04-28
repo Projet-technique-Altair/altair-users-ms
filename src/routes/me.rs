@@ -28,12 +28,18 @@ pub(crate) async fn me(
 ) -> Result<Json<ApiResponse<User>>, AppError> {
     let role = resolve_effective_role(&roles)?;
 
-    let user = state
+    let resolution = state
         .users_service
         .get_or_create_user_from_keycloak(&keycloak_id, role, &name, &pseudo, &email)
         .await?;
 
-    Ok(Json(ApiResponse::success(user)))
+    if let Some(gamification_sync) = &state.gamification_sync_service {
+        if let Err(error) = gamification_sync.sync_login_progress(&resolution).await {
+            tracing::warn!("gamification login sync failed: {}", error);
+        }
+    }
+
+    Ok(Json(ApiResponse::success(resolution.user)))
 }
 
 pub(crate) async fn update_me(
@@ -59,19 +65,6 @@ pub(crate) async fn update_me(
             "Username cannot be changed".to_string(),
         ));
     }
-
-    // Reject local pseudo/email collisions early.
-    /*if let Some(ref pseudo) = update_input.pseudo {
-        let exists = state
-            .users_service
-            .pseudo_exists_for_other_user(&keycloak_id, pseudo)
-            .await?;
-        if exists {
-            return Err(AppError::Conflict(
-                "Pseudo already used by another user".to_string(),
-            ));
-        }
-    }*/
 
     if let Some(ref email) = update_input.email {
         let exists = state

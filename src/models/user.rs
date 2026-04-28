@@ -14,6 +14,7 @@ pub struct UserRow {
     pub user_id: Uuid,
     pub keycloak_id: String,
     pub role: String,
+    pub account_status: String,
 
     pub name: String,
     pub pseudo: String,
@@ -34,6 +35,7 @@ pub struct UserRow {
 pub struct User {
     pub user_id: Uuid,
     pub role: String,
+    pub account_status: String,
 
     pub name: String,
     pub pseudo: String,
@@ -55,6 +57,7 @@ impl From<UserRow> for User {
         Self {
             user_id: row.user_id,
             role: row.role,
+            account_status: row.account_status,
 
             name: row.name,
             pseudo: row.pseudo,

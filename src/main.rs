@@ -14,7 +14,7 @@ use crate::routes::init_routes;
 use crate::state::AppState;
 
 const DEFAULT_ALLOWED_ORIGINS: &str = "http://localhost:5173,http://localhost:3000";
-const DEFAULT_ALLOWED_METHODS: &str = "GET,OPTIONS";
+const DEFAULT_ALLOWED_METHODS: &str = "GET,POST,PATCH,OPTIONS";
 const DEFAULT_ALLOWED_HEADERS: &str = "authorization,content-type,x-altair-keycloak-id,x-altair-name,x-altair-email,x-altair-roles,x-altair-user-id";
 
 fn parse_allowed_origins() -> Vec<HeaderValue> {
