@@ -182,17 +182,33 @@ pub async fn create_admin_user_sanction(
     Json(body): Json<CreateSanctionRequest>,
 ) -> Result<Json<ApiResponse<AdminSanctionResponse>>, AppError> {
     let caller = ensure_admin(&headers)?;
+    let action = body.action.trim().to_lowercase();
+    let keycloak_id = if matches!(action.as_str(), "suspend" | "ban") {
+        Some(
+            state
+                .users_service
+                .get_keycloak_id_by_user_id(user_id)
+                .await?,
+        )
+    } else {
+        None
+    };
 
     let (user, sanction) = state
         .users_service
         .apply_sanction_admin(
             caller.user_id,
             user_id,
-            body.action.trim(),
+            action.as_str(),
             body.reason.trim(),
             body.duration_days,
         )
         .await?;
+
+    if let (Some(keycloak), Some(keycloak_id)) = (&state.keycloak_admin_service, keycloak_id) {
+        keycloak.set_user_enabled(&keycloak_id, false).await?;
+        keycloak.logout_user_sessions(&keycloak_id).await?;
+    }
 
     Ok(Json(ApiResponse::success(AdminSanctionResponse {
         user,
@@ -207,19 +223,33 @@ pub async fn update_admin_account_status(
     Json(body): Json<UpdateAccountStatusRequest>,
 ) -> Result<Json<ApiResponse<User>>, AppError> {
     let caller = ensure_admin(&headers)?;
+    let account_status = body.account_status.trim().to_lowercase();
     let reason = body
         .reason
         .unwrap_or_else(|| "Manual admin status update".into());
+
+    let keycloak_id = state
+        .users_service
+        .get_keycloak_id_by_user_id(user_id)
+        .await?;
 
     let user = state
         .users_service
         .update_account_status_admin(
             caller.user_id,
             user_id,
-            body.account_status.trim(),
+            account_status.as_str(),
             reason.trim(),
         )
         .await?;
+
+    if let Some(keycloak) = &state.keycloak_admin_service {
+        let enabled = account_status == "active";
+        keycloak.set_user_enabled(&keycloak_id, enabled).await?;
+        if !enabled {
+            keycloak.logout_user_sessions(&keycloak_id).await?;
+        }
+    }
 
     Ok(Json(ApiResponse::success(user)))
 }

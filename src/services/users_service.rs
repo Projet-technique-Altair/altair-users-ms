@@ -72,6 +72,20 @@ impl UsersService {
         Ok(row.into())
     }
 
+    pub async fn get_keycloak_id_by_user_id(&self, user_id: Uuid) -> Result<String, AppError> {
+        sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT keycloak_id
+            FROM users
+            WHERE user_id = $1
+            "#,
+        )
+        .bind(user_id)
+        .fetch_one(&self.db)
+        .await
+        .map_err(|_| AppError::NotFound("User not found".into()))
+    }
+
     // ==========================
     // GET /user/pseudo
     // ==========================
@@ -404,6 +418,22 @@ impl UsersService {
             }),
         )
         .await?;
+
+        if account_status == "active" {
+            sqlx::query(
+                r#"
+                UPDATE user_sanctions
+                SET status = 'resolved',
+                    resolved_at = COALESCE(resolved_at, NOW())
+                WHERE user_id = $1
+                  AND status = 'active'
+                "#,
+            )
+            .bind(target_user_id)
+            .execute(&self.db)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        }
 
         Ok(row.into())
     }

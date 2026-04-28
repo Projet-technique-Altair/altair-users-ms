@@ -335,6 +335,62 @@ impl KeycloakAdminService {
 
         Ok(())
     }
+
+    pub async fn set_user_enabled(&self, keycloak_id: &str, enabled: bool) -> Result<(), AppError> {
+        let token = self.fetch_admin_token().await?;
+        let url =
+            self.build_url(&["admin", "realms", self.realm.as_str(), "users", keycloak_id])?;
+
+        self.exec_json_request(
+            reqwest::Method::PUT,
+            url,
+            &token,
+            &serde_json::json!({ "enabled": enabled }),
+        )
+        .await
+    }
+
+    pub async fn logout_user_sessions(&self, keycloak_id: &str) -> Result<(), AppError> {
+        let token = self.fetch_admin_token().await?;
+        let url = self.build_url(&[
+            "admin",
+            "realms",
+            self.realm.as_str(),
+            "users",
+            keycloak_id,
+            "sessions",
+        ])?;
+
+        self.exec_empty_request(reqwest::Method::DELETE, url, &token)
+            .await
+    }
+
+    async fn exec_empty_request(
+        &self,
+        method: reqwest::Method,
+        url: reqwest::Url,
+        token: &str,
+    ) -> Result<(), AppError> {
+        let response = self
+            .http
+            .request(method, url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("Request failed: {e}")))?;
+
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+
+        if !status.is_success() {
+            return Err(AppError::Internal(format!(
+                "Keycloak request failed: {} - {}",
+                status, text
+            )));
+        }
+
+        Ok(())
+    }
 }
 
 fn parse_keycloak_base_url(raw: &str) -> Option<reqwest::Url> {
