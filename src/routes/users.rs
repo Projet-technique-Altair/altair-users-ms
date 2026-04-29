@@ -206,8 +206,11 @@ pub async fn create_admin_user_sanction(
         .await?;
 
     if let (Some(keycloak), Some(keycloak_id)) = (&state.keycloak_admin_service, keycloak_id) {
-        keycloak.set_user_enabled(&keycloak_id, false).await?;
-        keycloak.logout_user_sessions(&keycloak_id).await?;
+        if let Err(err) = keycloak.set_user_enabled(&keycloak_id, false).await {
+            eprintln!("keycloak sync failed after {action} sanction for user {user_id}: {err}");
+        } else if let Err(err) = keycloak.logout_user_sessions(&keycloak_id).await {
+            eprintln!("keycloak logout failed after {action} sanction for user {user_id}: {err}");
+        }
     }
 
     Ok(Json(ApiResponse::success(AdminSanctionResponse {
@@ -245,9 +248,14 @@ pub async fn update_admin_account_status(
 
     if let Some(keycloak) = &state.keycloak_admin_service {
         let enabled = account_status == "active";
-        keycloak.set_user_enabled(&keycloak_id, enabled).await?;
-        if !enabled {
-            keycloak.logout_user_sessions(&keycloak_id).await?;
+        if enabled {
+            keycloak.set_user_enabled(&keycloak_id, true).await?;
+        } else if let Err(err) = keycloak.set_user_enabled(&keycloak_id, false).await {
+            eprintln!("keycloak sync failed after blocking user {user_id}: {err}");
+        } else {
+            if let Err(err) = keycloak.logout_user_sessions(&keycloak_id).await {
+                eprintln!("keycloak logout failed after blocking user {user_id}: {err}");
+            }
         }
     }
 

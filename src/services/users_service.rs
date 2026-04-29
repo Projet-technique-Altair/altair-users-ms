@@ -408,16 +408,22 @@ impl UsersService {
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or_else(|| AppError::NotFound("User not found".into()))?;
 
-        self.insert_audit_log(
-            Some(actor_user_id),
-            Some(target_user_id),
-            "user.account_status.updated",
-            serde_json::json!({
-                "account_status": account_status,
-                "reason": reason.trim()
-            }),
-        )
-        .await?;
+        if let Err(err) = self
+            .insert_audit_log(
+                Some(actor_user_id),
+                Some(target_user_id),
+                "user.account_status.updated",
+                serde_json::json!({
+                    "account_status": account_status,
+                    "reason": reason.trim()
+                }),
+            )
+            .await
+        {
+            eprintln!(
+                "audit log write failed after account status update for user {target_user_id}: {err}"
+            );
+        }
 
         if account_status == "active" {
             sqlx::query(
@@ -520,18 +526,24 @@ impl UsersService {
             _ => unreachable!(),
         };
 
-        self.insert_audit_log(
-            Some(actor_user_id),
-            Some(target_user_id),
-            "user.sanction.created",
-            serde_json::json!({
-                "sanction_id": sanction.sanction_id,
-                "action": action,
-                "reason": trimmed_reason,
-                "expires_at": expires_at
-            }),
-        )
-        .await?;
+        if let Err(err) = self
+            .insert_audit_log(
+                Some(actor_user_id),
+                Some(target_user_id),
+                "user.sanction.created",
+                serde_json::json!({
+                    "sanction_id": sanction.sanction_id,
+                    "action": action,
+                    "reason": trimmed_reason,
+                    "expires_at": expires_at
+                }),
+            )
+            .await
+        {
+            eprintln!(
+                "audit log write failed after {action} sanction for user {target_user_id}: {err}"
+            );
+        }
 
         Ok((user, sanction))
     }
